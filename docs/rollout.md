@@ -13,7 +13,7 @@ Pick one per repo. The tailoring session asks which.
 
 `check.sh security` (secret scan, dependency audit, SAST) runs at every tier; the auditor agent is Shared and Review-only.
 
-Review-only is often the highest-value tier for a fractional CTO: the kit becomes your review arm, and the review log becomes the written trail a client can see.
+Review-only is often the highest-value tier when you are accountable for code you don't write: the kit becomes your review arm, and the review log becomes a written trail you can show the people who rely on that code.
 
 ### Review-only: keep the kit out of their repo
 
