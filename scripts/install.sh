@@ -20,7 +20,7 @@ copy() {
 
 while IFS= read -r f; do
   rel="${f#"$KIT"/}"
-  [[ "$rel" == "scripts/install.sh" || "$rel" == "LICENSE" ]] && continue
+  [[ "$rel" == "scripts/install.sh" || "$rel" == "LICENSE" || "$rel" == docs/assets/* ]] && continue
   copy "$rel"
 done < <(find "$KIT" -type f ! -path '*/.git/*')
 

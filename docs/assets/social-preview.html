@@ -1,0 +1,36 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --line:#2a313c; --text:#e8ecf1; --muted:#8b95a5; --accent:#e8a33d; --ok:#3fb27f; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:1280px; height:640px; background:var(--bg); color:var(--text); font-family:"Inter",sans-serif; overflow:hidden; }
+  body { position:relative; padding:72px 80px; }
+  .grid { position:absolute; inset:0; z-index:0; background-image:
+      linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size:40px 40px; opacity:.18; mask-image:radial-gradient(ellipse at 85% 40%, #000 0%, transparent 70%); }
+  .eyebrow, h1, .tag, .flow, .foot { position:relative; z-index:1; }
+  .flow, .foot { position:absolute; }
+  .eyebrow { font-family:"DejaVu Sans Mono",monospace; font-size:20px; letter-spacing:.08em; color:var(--accent); text-transform:uppercase; }
+  h1 { font-family:"Inter Display","Inter",sans-serif; font-weight:800; font-size:104px; line-height:1; letter-spacing:-.03em; margin-top:22px; }
+  .tag { font-size:32px; line-height:1.3; color:#c9d1db; margin-top:22px; max-width:760px; font-weight:400; }
+  .flow { position:absolute; left:80px; right:80px; bottom:132px; display:flex; align-items:center; gap:14px; }
+  .step { flex:1; white-space:nowrap; background:var(--panel); border:1.5px solid var(--line); border-radius:14px; padding:16px 22px; font-size:24px; font-weight:600; }
+  .step small { display:block; font-family:"DejaVu Sans Mono",monospace; font-size:14px; white-space:nowrap; font-weight:400; color:var(--muted); margin-top:4px; }
+  .step.review { border-color:var(--accent); box-shadow:0 0 0 4px rgba(232,163,61,.12); }
+  .arrow { color:var(--muted); font-size:26px; }
+  .check { color:var(--ok); }
+  .foot { position:absolute; left:80px; right:80px; bottom:56px; display:flex; justify-content:space-between; font-family:"DejaVu Sans Mono",monospace; font-size:18px; color:var(--muted); }
+</style></head>
+<body>
+  <div class="grid"></div>
+  <div class="eyebrow">Claude Code workflow kit</div>
+  <h1>Claude Kit</h1>
+  <p class="tag">Plan, write, check and review — with every decision recorded and every check run twice.</p>
+  <div class="flow">
+    <div class="step">Plan<small>one decisive plan</small></div><span class="arrow">→</span>
+    <div class="step">Write<small>lists its defaults</small></div><span class="arrow">→</span>
+    <div class="step"><span class="check">✓</span> Check<small>real output, pasted</small></div><span class="arrow">→</span>
+    <div class="step review">Review<small>re-runs, then judges</small></div>
+  </div>
+  <div class="foot"><span>github.com/sam-pop/claude-code-workflow-kit</span><span>MIT · independent project</span></div>
+</body></html>

@@ -82,6 +82,37 @@ flowchart LR
 - **Larger changes** start with a planner that commits to one approach, names the alternative it rejected, and returns questions with recommended answers for you to confirm in a single reply.
 - **Every review** is saved automatically. Once a month, recurring findings become lint rules and recurring false alarms become reviewer exceptions.
 
+### One change, checked twice
+
+The writer reports its own check results; the reviewer doesn't take them on trust.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor O as Owner
+    participant M as Main session
+    participant P as Planner
+    participant W as Writer
+    participant C as check.sh
+    participant R as Reviewer
+    O->>M: Request
+    M->>P: Brief: change, files, base branch
+    P-->>M: Blueprint + questions with recommended answers
+    M->>O: One round of questions
+    O-->>M: "yes" (or corrections)
+    M->>W: Confirmed blueprint
+    W->>C: lint, test, build
+    C-->>W: Exit codes + output
+    W-->>M: Report: pasted check output, defaults it picked
+    M->>R: Diff + blueprint + writer's report
+    Note over R: Reads the diff before the plan
+    R->>C: Re-run lint and test
+    C-->>R: Exit codes + test counts
+    R-->>M: Claims vs re-run, Standards, Spec, held-back findings
+    M->>O: Findings and what was done with each
+    Note over O: Owner merges
+```
+
 ## Quick start
 
 ### Requirements
@@ -176,6 +207,46 @@ Agents use model aliases (`sonnet`, `opus`, `fable`), so they move to new versio
 - **From the writer:** the files changed, the tests added and the bug each one catches, the exit code and last lines of every check, and a **Defaults I picked** list of the decisions nobody made. Read that list.
 - **From the reviewer:** its own re-run of the checks against the writer's claims, then **Standards** findings (does it follow the rules) and **Spec** findings (does it do what was asked), each with a confidence score, plus a **Considered, below threshold** list so you can see what it held back.
 
+
+<details>
+<summary><strong>Example reviewer report</strong> (illustrative)</summary>
+
+A sample of the format, on a made-up change that adds a CSV export to a multi-tenant app:
+
+```markdown
+## Review: Add invoice CSV export
+
+### Summary
+Adds a per-tenant CSV export of invoices. Not merge-ready: one data-isolation
+issue and one test that cannot fail.
+
+### Checks
+lint: 0 (writer said 0) · test: 142 passed / 0 skipped vs base 138 / 0 · build: 0
+
+### Standards
+- [ ] [92] src/app/api/invoices/export/route.ts:18 — tenant ID is read from the
+      query string → take it from the session; as written, any signed-in user
+      can export another tenant's invoices.
+- [ ] [88] src/lib/invoices/export.test.ts:41 — expected CSV is built with the
+      same toCsvRow() the code uses (tautological) → assert against a literal
+      fixture.
+
+### Spec
+- [ ] [86] route.ts:30 — "Exports are limited to the selected date range" →
+      the range is parsed but never applied; the query returns every invoice.
+
+### Considered, below threshold
+- [70] src/lib/invoices/export.ts:12 — loads all rows into memory; fine at
+      current volume, worth streaming above ~50k invoices.
+
+### Not reviewed
+Column order and headers against what finance expects.
+```
+
+The checks line is the point: the reviewer re-ran the checks and compared them with the writer's claim. A mismatch there is a blocking finding in itself.
+
+</details>
+
 Full guide: [HOW-TO-USE.md](HOW-TO-USE.md).
 
 ## What's in the box
@@ -250,6 +321,19 @@ Configured in `.claude/settings.json`:
 ## The improvement loop
 
 The kit is meant to get sharper with use, under your control:
+
+```mermaid
+flowchart LR
+    A[Reviewer or auditor<br/>report] -->|hook saves it| B[(docs/reviews/)]
+    B --> C[You mark each finding:<br/>fixed · dismissed · deferred]
+    C --> D[check.sh doctor<br/>monthly]
+    D -->|same finding 3+ times| E[New lint rule<br/>row becomes mechanical]
+    D -->|same dismissal 2+ times| F[Reviewer<br/>false-positive entry]
+    E --> G[Fewer, sharper findings]
+    F --> G
+    G -.-> A
+```
+
 
 1. **Capture.** Each review is saved to `docs/reviews/`.
 2. **Mark.** You tick findings you fixed, add `dismissed: <reason>` to false alarms, or attach an open-item ID to deferred ones.
