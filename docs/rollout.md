@@ -4,12 +4,12 @@
 
 Pick one per repo. The tailoring session asks which.
 
-| Tier | When | Kit pieces | `handoff.md` | Reviewer model |
-|---|---|---|---|---|
-| **Script** | Automations, one-file tools, glue | `CLAUDE.md`, `check.sh`, conventions (short) | none | none; `check.sh` only |
-| **Solo** | One engineer, side product, low blast radius | Full docs, main session + reviewer; planner and writer for 3+ file changes | git-ignored | Opus |
-| **Shared** | Client work, a second contributor, money or personal data in play | Everything; planner on anything beyond a small fix; reviewer required before merge; security auditor before each release and quarterly | committed, or mirrored to the issue tracker | Fable |
-| **Review-only** | Other people write the code (a contractor team, an agency); you are the reviewer of record | Reviewer + security auditor, conventions and the two lists, in a **separate review workspace**, not in their repo (see below) | none | Fable |
+| Tier | When | Kit pieces | `handoff.md` |
+|---|---|---|---|
+| **Script** | Automations, one-file tools, glue | `CLAUDE.md`, `check.sh`, conventions (short) | none |
+| **Solo** | One engineer, side product, low blast radius | Full docs, main session + reviewer; planner and writer for 3+ file changes | git-ignored |
+| **Shared** | Client work, a second contributor, money or personal data in play | Everything; planner on anything beyond a small fix; reviewer required before merge; security auditor before each release and quarterly | committed, or mirrored to the issue tracker |
+| **Review-only** | Other people write the code (a contractor team, an agency); you are the reviewer of record | Reviewer + security auditor, conventions and the two lists, in a **separate review workspace**, not in their repo (see below) | none |
 
 `check.sh security` (secret scan, dependency audit, SAST) runs at every tier; the auditor agent is Shared and Review-only.
 
@@ -24,6 +24,17 @@ Hooks in `.claude/settings.json` and `scripts/` run shell commands on your machi
 - The reviewer treats any change to `.claude/`, `scripts/`, CI or hook config as blocking.
 
 The same caution applies on Shared repos with outside contributors: review changes to `.claude/` and `scripts/` before opening Claude Code on that branch.
+
+## Model profiles
+
+Tiers decide which agents run; profiles decide which models they run on. Pick a profile by what your plan and budget cover, and switch any time with `scripts/set-models.sh <profile>`.
+
+| Profile | planner | writer | reviewer | security-auditor | For |
+|---|---|---|---|---|---|
+| **standard** (default) | opus | sonnet | opus | opus | Any plan with Opus access. The writer does the most tokens, so it gets the cheaper model; judgment roles get Opus. |
+| **max** | opus | opus | fable | fable | Plans or budgets that include Fable. Fable reviews the diff once per change, where its extra capability buys the most for the fewest tokens. |
+
+Agents use model aliases, so they move to new model versions automatically. Fable can bill usage credits depending on plan and seat: interactive sessions ask for consent first, but `claude -p` and Agent SDK runs bill **without asking**. Check your `/model` picker for "Requires usage credits" before choosing **max** for any automated run.
 
 Move a repo up a tier when someone else touches it or when a mistake would cost a client. Rarely move down.
 
@@ -62,7 +73,7 @@ Decide these before the first repo, so the kit cannot talk you into keeping it.
 - Agreement rate under 40% for two months → drop the reviewer to a lint-only gate and rework the two lists.
 - Review log empty for 30 days **while reviews ran** (check that `docs/reviews/` gets new files; if it doesn't, the hook is broken, not the loop) → drop the loop and keep the rest.
 
-**First-month experiment**: the same five diffs through the reviewer on Opus and on Fable. Count findings you agreed with and the cost of each run. Pick the model from the result and record it in `docs/decisions.md`.
+**First-month experiment** (if Fable is available to you): the same five diffs through the reviewer under **standard** and **max**. Count findings you agreed with and the cost of each run. Pick the profile from the result and record it in `docs/decisions.md`.
 
 ## Token and cost discipline
 

@@ -1,7 +1,7 @@
 ---
 name: security-auditor
 description: "Audits this repo's security as a whole system, not a diff: trust boundaries, authorization, tenancy, data flows, secrets, logging. Read-only. Run before each release and quarterly on Shared and Review-only repos, and on a sensitive change when the owner asks."
-model: claude-fable-5-1
+model: opus
 color: red
 tools: Read, Grep, Glob, Bash
 omitClaudeMd: true

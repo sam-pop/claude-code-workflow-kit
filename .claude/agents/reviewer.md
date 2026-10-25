@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: "Reviews a change in this repo, starting from the diff, against docs/conventions.md (Standards) and the blueprint or PR description (Spec). Re-runs the checks itself. Reports findings with confidence. Read-only."
-model: claude-fable-5-1
+model: opus
 color: yellow
 tools: Read, Grep, Glob, Bash
 omitClaudeMd: true

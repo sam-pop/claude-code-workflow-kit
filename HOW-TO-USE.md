@@ -21,7 +21,7 @@ claude plugin install mattpocock-skills@claude-plugins-official
 
 1. **Install.**
    ```bash
-   /path/to/claude-kit/scripts/install.sh /path/to/your-repo
+   /path/to/claude-code-workflow-kit/scripts/install.sh /path/to/your-repo
    ```
    Nothing is overwritten. Where a file already existed, the kit's version lands beside it as `*.kit` to merge by hand.
 
@@ -33,6 +33,10 @@ claude plugin install mattpocock-skills@claude-plugins-official
    It explores the repo, asks one round of questions with recommended answers, fills placeholders, wires `check.sh` to the real commands, deletes what doesn't apply, runs `scripts/check.sh all` and pastes the output. Until `check.sh` is configured, every check fails on purpose, so nobody can report a pass that never ran.
 
 3. **Review and commit.** Read `CLAUDE.md`, `docs/conventions.md` and the agent files as a stranger would. Commit. The report's **Follow-ups** list the lint rules still to write; schedule them like any other task.
+
+## Models
+
+The kit ships on the **standard** profile (Sonnet writer, Opus elsewhere). If your plan includes Fable, `scripts/set-models.sh max` moves the writer to Opus and the reviewer and auditor to Fable. Fable can bill usage credits; `claude -p` runs do so without asking. Details: `docs/rollout.md`, Model profiles.
 
 ## Daily
 

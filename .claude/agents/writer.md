@@ -1,7 +1,7 @@
 ---
 name: writer
 description: "Implements a blueprint or a small fix in this repo following docs/conventions.md, writes the tests worth having, runs scripts/check.sh, and reports results exactly as they came out, including the defaults it picked."
-model: opus
+model: sonnet
 color: purple
 ---
 

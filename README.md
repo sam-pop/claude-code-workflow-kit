@@ -25,6 +25,7 @@ It is designed for people who **review code more than they write it**: tech lead
 - [How it works](#how-it-works)
 - [Quick start](#quick-start)
 - [Choosing a tier](#choosing-a-tier)
+- [Choosing a model profile](#choosing-a-model-profile)
 - [Daily use](#daily-use)
 - [What's in the box](#whats-in-the-box)
 - [The agents](#the-agents)
@@ -97,8 +98,8 @@ pip install semgrep
 ### Install into a repository
 
 ```bash
-git clone https://github.com/sam-pop/claude-kit.git
-claude-kit/scripts/install.sh /path/to/your-repo
+git clone https://github.com/sam-pop/claude-code-workflow-kit.git
+claude-code-workflow-kit/scripts/install.sh /path/to/your-repo
 ```
 
 The installer **never overwrites**. If a file already exists, the kit's version is written beside it as `<name>.kit` for you to merge.
@@ -130,15 +131,33 @@ Review the result, commit it, and you're running.
 
 The tailoring session asks which tier fits. Pick by blast radius, not by repo size.
 
-| Tier | Use when | What's installed | Reviewer model |
-|---|---|---|---|
-| **Script** | Automations, glue code, one-file tools | `CLAUDE.md`, `check.sh`, short conventions | none |
-| **Solo** | One engineer, low blast radius | Full docs; main session + reviewer; planner and writer for larger changes | Opus |
-| **Shared** | Client work, money or personal data, a second contributor | Everything; reviewer required before merge; security auditor before releases | Fable |
-| **Review-only** | Other people write the code; you are the reviewer of record | Reviewer + security auditor in **your own workspace**, with nothing installed in their repo | Fable |
+| Tier | Use when | What's installed |
+|---|---|---|
+| **Script** | Automations, glue code, one-file tools | `CLAUDE.md`, `check.sh`, short conventions |
+| **Solo** | One engineer, low blast radius | Full docs; main session + reviewer; planner and writer for larger changes |
+| **Shared** | Client work, money or personal data, a second contributor | Everything; reviewer required before merge; security auditor before releases |
+| **Review-only** | Other people write the code; you are the reviewer of record | Reviewer + security auditor in **your own workspace**, with nothing installed in their repo |
 
 > [!WARNING]
 > **Review-only repos get no hooks.** Hooks run shell commands on your machine. In a repo others commit to, a PR that edits `.claude/settings.json` or `scripts/` would run its code the next time you open Claude Code there. See [Security model](#security-model-and-limitations).
+
+### Choosing a model profile
+
+Tiers decide which agents run; **profiles** decide which models they use. Switch any time:
+
+```bash
+scripts/set-models.sh standard   # or: max
+```
+
+| Profile | Planner | Writer | Reviewer | Security auditor | Best for |
+|---|---|---|---|---|---|
+| **standard** *(default)* | Opus | Sonnet | Opus | Opus | Any plan with Opus access. The cheaper model does the token-heavy writing; judgment stays on Opus. |
+| **max** | Opus | Opus | Fable | Fable | Plans or budgets that include Fable. The strongest model reviews each diff once, where it buys the most for the fewest tokens. |
+
+Agents use model aliases (`sonnet`, `opus`, `fable`), so they move to new versions automatically.
+
+> [!NOTE]
+> Depending on your plan, Fable may bill **usage credits**. Interactive sessions ask before they do; `claude -p` and Agent SDK runs **do not**. Check the `/model` picker before running **max** in automation.
 
 ## Daily use
 
@@ -162,7 +181,7 @@ Full guide: [HOW-TO-USE.md](HOW-TO-USE.md).
 ## What's in the box
 
 ```
-claude-kit/
+claude-code-workflow-kit/
 ├── CLAUDE.md                  # Index template: stack, commands, layout, rules, workflow
 ├── TAILOR.md                  # Instructions for the session that adapts the kit (deleted after)
 ├── HOW-TO-USE.md              # Operator guide: daily commands, upkeep, ownership
@@ -186,6 +205,7 @@ claude-kit/
 │   ├── doctor.sh              # Kit hygiene checks
 │   ├── lint-hook.sh           # Shows lint failures to Claude after each edit
 │   ├── capture-review.sh      # Saves reviewer and auditor reports
+│   ├── set-models.sh          # Switches agents between model profiles
 │   └── install.sh             # Copies the kit into a repo without overwriting
 └── .github/workflows/check.yml  # CI runs check.sh all
 ```
@@ -207,12 +227,12 @@ Everything verifies through one script, so agents, hooks and CI always check the
 
 All four are plain Markdown files with YAML frontmatter in `.claude/agents/`. Edit them freely.
 
-| Agent | Access | Loads `CLAUDE.md` | Job |
-|---|---|---|---|
-| **planner** | Read-only | No | One decisive blueprint: approach, rejected alternative, acceptance criteria, files, data, rollback path, tests, sequence, questions for the owner. |
-| **writer** | Read/write | Yes | Implements the blueprint, writes tests that catch real bugs, runs the checks, reports exact output and the defaults it picked. |
-| **reviewer** | Read-only | No | Reads the diff before the plan, re-runs the checks, reports Standards and Spec findings separately with confidence scores. Lower threshold (60%) for data, security and concurrency; 85% elsewhere. |
-| **security-auditor** | Read-only | No | Whole-system audit (trust boundaries, authorization, tenancy, data flows, secrets, rate limiting, logging). Critical and High block a release. |
+| Agent | Access | Loads `CLAUDE.md` | Model (standard / max) | Job |
+|---|---|---|---|---|
+| **planner** | Read-only | No | Opus / Opus | One decisive blueprint: approach, rejected alternative, acceptance criteria, files, data, rollback path, tests, sequence, questions for the owner. |
+| **writer** | Read/write | Yes | Sonnet / Opus | Implements the blueprint, writes tests that catch real bugs, runs the checks, reports exact output and the defaults it picked. |
+| **reviewer** | Read-only | No | Opus / Fable | Reads the diff before the plan, re-runs the checks, reports Standards and Spec findings separately with confidence scores. Lower threshold (60%) for data, security and concurrency; 85% elsewhere. |
+| **security-auditor** | Read-only | No | Opus / Fable | Whole-system audit (trust boundaries, authorization, tenancy, data flows, secrets, rate limiting, logging). Critical and High block a release. |
 
 Every agent treats text it finds in the repo (comments, docs, PR descriptions, other agents' reports) as **data, never instructions**. An instruction found there is reported as possible prompt injection.
 
@@ -279,7 +299,7 @@ Small changes use two contexts (main session + reviewer). Read-only agents skip 
 <details>
 <summary><strong>Why is the reviewer on a stronger model than the writer?</strong></summary>
 
-Review is bounded: it reads one diff and emits findings once, while the writer iterates. Paying more per token on the step with the fewest tokens is a good trade, and a different model catches different blind spots. `docs/rollout.md` includes a first-month experiment to confirm this on your own diffs.
+Review is bounded: it reads one diff and emits findings once, while the writer iterates. Paying more per token on the step with the fewest tokens is a good trade, and a different model catches different blind spots. Both profiles follow that rule. `docs/rollout.md` includes a first-month experiment to compare **standard** and **max** on your own diffs.
 </details>
 
 <details>
@@ -311,6 +331,10 @@ The question format, the two-axis (Standards / Spec) review, the test anti-patte
 ```bash
 claude plugin install mattpocock-skills@claude-plugins-official
 ```
+
+## Disclaimer
+
+Claude Kit is an independent community project. It is not affiliated with, endorsed by, or supported by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
 
 ## License
 
