@@ -1,0 +1,24 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # kit: replace with the stack's setup, e.g.
+      #   - uses: actions/setup-node@v4
+      #     with: { node-version-file: .nvmrc, cache: npm }
+      #   - run: npm ci
+      # or
+      #   - uses: actions/setup-python@v5
+      #     with: { python-version-file: .python-version }
+      #   - run: pip install -e .[dev]
+      - run: chmod +x scripts/check.sh
+      - run: scripts/check.sh all
