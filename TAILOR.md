@@ -30,6 +30,8 @@ If the owner is not available, take the most reasonable reading, say which readi
 
 ## 3. Fill in
 
+First, merge any `*.kit` files the installer left beside existing files (for example `CLAUDE.md.kit` next to the repo's own `CLAUDE.md`): keep the repo's existing rules and content, take the kit's structure, then delete the `.kit` file.
+
 Replace every `{{PLACEHOLDER}}` and delete every `<!-- kit: … -->` comment once its instruction is done. Search for `{{` at the end to confirm none remain.
 
 - `CLAUDE.md`: stack, layout table, the exact `check.sh` sub-commands, pointers. Keep it under 150 lines. Move anything that reads like history out.
