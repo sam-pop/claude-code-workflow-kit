@@ -7,13 +7,23 @@ Pick one per repo. The tailoring session asks which.
 | Tier | When | Kit pieces | `handoff.md` | Reviewer model |
 |---|---|---|---|---|
 | **Script** | Automations, one-file tools, glue | `CLAUDE.md`, `check.sh`, conventions (short) | none | none; `check.sh` only |
-| **Solo** | One engineer, side product, low blast radius | Full docs, writer + reviewer; planner only for work over a day | git-ignored | Opus |
-| **Shared** | Client work, a second contributor, money or personal data in play | Everything; planner on anything beyond a small fix; reviewer required before merge; security auditor on sensitive changes, before each release and quarterly | committed, or mirrored to the issue tracker | Fable |
-| **Review-only** | Other people write the code (a contractor team, an agency); you are the reviewer of record | `CLAUDE.md`, conventions, `check.sh`, reviewer + security auditor only. No planner, no writer. The reviewer runs on each PR with the PR description as data; your two lists encode what you keep catching in *their* work | none | Fable |
+| **Solo** | One engineer, side product, low blast radius | Full docs, main session + reviewer; planner and writer for 3+ file changes | git-ignored | Opus |
+| **Shared** | Client work, a second contributor, money or personal data in play | Everything; planner on anything beyond a small fix; reviewer required before merge; security auditor before each release and quarterly | committed, or mirrored to the issue tracker | Fable |
+| **Review-only** | Other people write the code (a contractor team, an agency); you are the reviewer of record | Reviewer + security auditor, conventions and the two lists, in a **separate review workspace**, not in their repo (see below) | none | Fable |
 
 `check.sh security` (secret scan, dependency audit, SAST) runs at every tier; the auditor agent is Shared and Review-only.
 
 Review-only is often the highest-value tier for a fractional CTO: the kit becomes your review arm, and the review log becomes the written trail a client can see.
+
+### Review-only: keep the kit out of their repo
+
+Hooks in `.claude/settings.json` and `scripts/` run shell commands on your machine. In a repo other people commit to, a PR that edits those files runs its code the next time you open Claude Code there. So for Review-only:
+
+- Keep the agents, `docs/conventions.md` and the two lists in your own review workspace (a folder or private repo), with the client repo checked out read-only beside it, or reviewed through `gh pr diff <n>`.
+- Install no hooks in the client repo. If the client wants `check.sh` and CI, that is a normal PR they review.
+- The reviewer treats any change to `.claude/`, `scripts/`, CI or hook config as blocking.
+
+The same caution applies on Shared repos with outside contributors: review changes to `.claude/` and `scripts/` before opening Claude Code on that branch.
 
 Move a repo up a tier when someone else touches it or when a mistake would cost a client. Rarely move down.
 
@@ -28,34 +38,37 @@ Move a repo up a tier when someone else touches it or when a mistake would cost 
 
 | When | Do |
 |---|---|
-| Every session end | Rewrite `handoff.md`. Move any decision made into `decisions.md`; any new question into `open.md`. |
+| Every session end | Rewrite `handoff.md` (ask for it; nothing forces it). Move any decision made into `decisions.md`; any new question into `open.md`. |
 | Every merge | Reviewer findings recorded with what was done about each. Spot-check one finding the reviewer did *not* raise. |
 | Monthly | `CLAUDE.md` under 150 lines; prune. Diff `.claude/agents/` and `check.sh` against the kit. Promote any rule the reviewer keeps catching into a mechanical check. |
-| Before each release (Shared) | Run the security auditor. Critical/High fixed or explicitly accepted in `docs/decisions.md`. |
-| Quarterly | Reread the reviewer's "Subtle violations" and "False positives" lists; drop what no longer fires, add what you have corrected twice. Run the security auditor on Shared repos even if nothing sensitive changed. |
+| Before each release (Shared, Review-only) | Run the security auditor. Critical/High fixed or explicitly accepted in `docs/decisions.md`. |
+| Quarterly | Reread the reviewer's "Subtle violations" and "False positives" lists; drop what no longer fires, add what you have corrected twice. Run the security auditor even if nothing sensitive changed. |
 
 ## Pre-committed tests of the kit itself
 
 Decide these before the first repo, so the kit cannot talk you into keeping it.
 
-**Metrics** (record monthly in the kit repo's `METRICS.md`, one line per repo):
+**Baseline first.** For two weeks before turning the agents on, log the same three numbers for your current way of working. Without a baseline, every later number is unfalsifiable.
 
-1. **Escaped defects** — bugs found after merge, per month. The only metric that measures correctness.
-2. **Agreement rate** — reviewer findings you fixed ÷ findings raised. Below 50% means the reviewer is noise; above 90% means it is only finding the easy stuff.
-3. **Hours per merged change** — your time, blueprint to merge. The kit must lower this or it is overhead dressed as rigor.
+**Metrics** (monthly, one line per repo in the kit repo's `METRICS.md`):
+
+1. **Cost per merged change**: tokens or dollars (`/cost` at session end, or Claude Code's OpenTelemetry metrics) plus your own minutes from request to merge, including list upkeep. Must be at or below the baseline within 60 days.
+2. **Reviewer precision and misses**: agreement rate (findings fixed ÷ fixed + dismissed; `doctor` prints it), and escaped defects per month, each classed as *reviewer flagged*, *reviewer silent* or *outside scope*. A rising *reviewer silent* count with stable precision means the confidence thresholds are hiding real issues.
+3. **Verification honesty**: share of writer reports whose claimed check results match what the reviewer got re-running them. Below 95% means the writer's self-report cannot be trusted and the reviewer must always re-run.
 
 **Kill criteria**:
 
-- No finding marked (fixed or dismissed) in `docs/reviews/` for 30 days → delete the loop (capture hook, review log, monthly pass). Keep hooks, `check.sh` and the agents.
-- Agreement rate under 40% for two months → drop the reviewer to a lint-only gate and rethink the two lists.
-- Hours per change not down after 60 days on the first repo → stop rolling out; fix or shrink the kit first.
+- Cost per merged change above baseline after 60 days on the first repo → stop rolling out; shrink the kit (drop the planner, then the writer) before trying again.
+- Agreement rate under 40% for two months → drop the reviewer to a lint-only gate and rework the two lists.
+- Review log empty for 30 days **while reviews ran** (check that `docs/reviews/` gets new files; if it doesn't, the hook is broken, not the loop) → drop the loop and keep the rest.
 
-**Experiment to run in the first month**: the same five diffs through the reviewer on Opus and on Fable. Count findings you agreed with and the cost. Pick the model from the result, not from belief, and record it in `docs/decisions.md`.
+**First-month experiment**: the same five diffs through the reviewer on Opus and on Fable. Count findings you agreed with and the cost of each run. Pick the model from the result and record it in `docs/decisions.md`.
 
 ## Token and cost discipline
 
 - `CLAUDE.md` is loaded every turn; every line costs on every call. Keep it an index.
-- Agents read `conventions.md` and the blueprint, not the whole `docs/` tree.
+- Subagents load `CLAUDE.md` and a git-status snapshot automatically. The planner, reviewer and auditor set `omitClaudeMd: true` and read only what their Setup lists; the writer keeps `CLAUDE.md` because it needs the commands.
+- Small fixes skip the planner and writer: main session plus reviewer is two contexts instead of four.
 - The planner and reviewer are read-only and bounded; the writer is where cost accumulates. Give it a blueprint so it does not re-decide.
 - Mechanical checks are free. Anything grep can find should never reach a model.
 - Prefer one round of a stronger reviewer over three rounds of a weaker one.

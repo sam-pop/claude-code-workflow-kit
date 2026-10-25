@@ -1,6 +1,6 @@
 # Glossary
 
-The project's shared language. One term per line, the meaning in one sentence, and where it lives in code. Agents read this before naming anything; the reviewer flags names that use a different word for a term listed here.
+The project's shared language. One term per line, the meaning in one sentence, and where it lives in code. The planner reads it before naming anything new.
 
 Why it matters: a term defined once replaces a sentence everywhere it appears, in code, docs, prompts and reviews. "The materialization cascade" is one token for the agent; "when a lesson is given a spot in the file system and its parents update" is thirty.
 

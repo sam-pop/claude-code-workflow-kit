@@ -1,21 +1,15 @@
 # Open items
 
-The single list of things not yet decided. Every item has an ID; other documents and code comments refer to the ID, never restate the question. **Agents do not pick a value for an item here.** They design against the boundary, code around it, and flag the dependency in their report.
+The single list of things not yet decided. Every item has an ID; other documents and code comments refer to the ID instead of restating the question. Agents design around these items and flag them; the named owner decides.
 
-When an item is decided: record it in `decisions.md` with "(was Oxx)" and delete it here. When a new question comes up: add it here, not inline in another doc.
+When an item is decided, record it in `decisions.md` with "(was Oxx)" and delete it here. When a new question comes up, add it here rather than inline in another doc. `scripts/check.sh doctor` warns when an item is past its decide-by date and fails above 15 items, so the list stays short enough to act on.
 
-Format: `- **Oxx** — the question, what it blocks, who decides.`
+Format: `- **Oxx** (opened YYYY-MM-DD, decide by YYYY-MM-DD, owner) — the question. Blocks: what.`
 
 ## Engineering
 
-- **O1** — {{question}}. Blocks: {{what}}. Decides: {{owner / engineer}}.
+- **O1** (opened {{YYYY-MM-DD}}, decide by {{YYYY-MM-DD}}, {{owner}}) — {{question}}. Blocks: {{what}}.
 
 ## Product
 
-- **O2** — {{question}}. Blocks: {{what}}. Decides: {{product owner}}.
-
-## Research needed
-
-<!-- kit: items that need information, not a decision. The answer goes in a note under docs/research/ and the item moves to Engineering or Product. -->
-
-- **O3** — {{what we need to find out}}.
+- **O2** (opened {{YYYY-MM-DD}}, decide by {{YYYY-MM-DD}}, {{product owner}}) — {{question}}. Blocks: {{what}}.

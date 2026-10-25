@@ -1,46 +1,53 @@
 {
+  "env": {
+    "CLAUDE_CODE_FORK_SUBAGENT": "0"
+  },
+  "permissions": {
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Bash(git branch -D:*)",
+      "Bash(git checkout -- .:*)",
+      "Bash(git restore .:*)",
+      "Bash(git stash drop:*)",
+      "Bash(npm publish:*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.pem)"
+    ]
+  },
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "scripts/block-dangerous-git.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|NotebookEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "scripts/check.sh lint --changed 2>&1 | tail -n 40",
+            "command": "\"${CLAUDE_PROJECT_DIR}/scripts/lint-hook.sh\"",
             "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "SubagentHandback",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}/scripts/capture-review.sh\" handback",
+            "timeout": 30
           }
         ]
       }
     ],
     "SubagentStop": [
       {
+        "matcher": "reviewer|security-auditor",
         "hooks": [
           {
             "type": "command",
-            "command": "scripts/capture-review.sh",
+            "command": "\"${CLAUDE_PROJECT_DIR}/scripts/capture-review.sh\" stop",
             "timeout": 30
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "test -f handoff.md && git diff --quiet -- handoff.md && echo 'Reminder: handoff.md was not updated this session.' || true"
           }
         ]
       }

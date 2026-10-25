@@ -24,7 +24,7 @@ while IFS= read -r f; do
   copy "$rel"
 done < <(find "$KIT" -type f ! -path '*/.git/*')
 
-chmod +x "$TARGET/scripts/check.sh"
+chmod +x "$TARGET"/scripts/*.sh
 echo
 echo "Next: open Claude Code in $TARGET and say: Read TAILOR.md and tailor the kit to this repo."
 echo "Any *.kit files are the kit's version of a file you already had; merge by hand, then delete them."

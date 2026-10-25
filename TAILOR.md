@@ -26,19 +26,22 @@ Ask only what discovery could not answer, in rounds: every question whose prereq
 
 If the owner is not available, take the most reasonable reading, say which reading you took at the top of your report, and proceed.
 
+**If the tier is Review-only, stop here and switch plans.** Do not install hooks, `.claude/settings.json` or `scripts/` into a repo other people commit to (`docs/rollout.md`, Review-only). Instead set up a separate review workspace: copy `.claude/agents/reviewer.md`, `.claude/agents/security-auditor.md` and `docs/conventions.md` into it, tailor those three to the client repo's stack, and write a short `CLAUDE.md` there saying where the client repo is checked out and that reviews use `gh pr diff <n>`. Then go to step 6.
+
 ## 3. Fill in
 
 Replace every `{{PLACEHOLDER}}` and delete every `<!-- kit: … -->` comment once its instruction is done. Search for `{{` at the end to confirm none remain.
 
 - `CLAUDE.md`: stack, layout table, the exact `check.sh` sub-commands, pointers. Keep it under 150 lines. Move anything that reads like history out.
-- `scripts/check.sh`: fill each function with the repo's real commands. Every function must exit non-zero on failure. If a check does not apply, make the function print "skipped: <reason>" and exit 0.
-- `docs/conventions.md`: write the sections from what discovery found. Each rule in the Anti-Patterns table must have a mechanical check in `check.sh` or be marked **judgment** (reviewer only). Add lint rules for every mechanical item where the stack's linter supports custom rules.
+- `scripts/check.sh`: replace every `not_configured` call with the repo's real commands, including a `lint --changed` that lints only the given files. Every function must exit non-zero on failure. A check that truly does not apply becomes `skip "<reason>"`. Until a check is configured it fails on purpose.
+- `docs/conventions.md`: write the sections from what discovery found. Each rule in the Anti-Patterns table must have a mechanical check in `check.sh` or be marked **judgment** (reviewer only). Use the stack's existing lint rules where one already covers a row. Writing new custom rules is a follow-up task, not part of tailoring: list the rows that still need one under **Follow-ups** in your report.
 - `docs/decisions.md`: record the decisions already visible in the repo (stack, major libraries, deploy target), dated with the best date you can find (commit history), not today's date.
 - `docs/open.md`: everything discovery left unresolved, plus anything the owner said is undecided.
 - `.claude/agents/*.md`: keep the structure; replace the stack-specific examples in the reviewer's "Subtle violations" and "False positives" lists with ones that fit this stack. Set the reviewer's `model`. Remove layers from the writer's workflow that this repo does not have. In `security-auditor.md`, name the sensitive data classes this repo holds and fill the stack-specific area; delete the file on Script and Solo tiers.
 - `scripts/check.sh security`: pick the dependency-audit command for the stack and the semgrep ruleset; confirm gitleaks and semgrep are installed or add them to the setup instructions in `CLAUDE.md`.
-- `.claude/settings.json`: point the hooks at `check.sh`. Remove hooks whose checks are too slow to run after every edit (anything over ~10 s belongs in the Stop hook or CI only).
-- `.github/workflows/check.yml`: match the runtime setup steps to the stack. Delete it if the repo is not on GitHub.
+- `.claude/settings.json`: keep the hooks as they are; they call `scripts/lint-hook.sh` and `scripts/capture-review.sh`. If `check.sh lint --changed` takes over ~10 s, make it faster (lint only the changed files) rather than removing the hook. Add `permissions.deny` rules for anything else in this repo that must never run unattended (a deploy script, a production database CLI).
+- `.github/workflows/check.yml`: install gitleaks and semgrep (already there) and the stack's runtime.
+- Delete `.github/workflows/check.yml` if the repo is not on GitHub.
 - `handoff.md`: write the first one: what you did, what remains, questions for the owner. Add it to `.gitignore` only if the owner chose solo tier.
 
 ## 3b. Write for the agent that will read it
@@ -53,16 +56,14 @@ Every file in `.claude/agents/` and `CLAUDE.md` is read by a model, not a person
 
 ## 4. Remove
 
-- Delete `TAILOR.md`, `scripts/install.sh` and this kit's `README.md` from the repo. If the repo has no README, write a short one that mentions `CLAUDE.md` and `scripts/check.sh`.
+- Delete `TAILOR.md`, `HOW-TO-USE.md` and this kit's `README.md` from the repo. If the repo has no README, write a short one that mentions `CLAUDE.md` and `scripts/check.sh`.
 - Delete agent files the tier does not use.
 
 ## 5. Verify
 
-- Run `scripts/check.sh all` and record the result. If any sub-command cannot run here, say so; do not claim it passed.
-- Grep for `{{` and `kit:` across the repo; both must return nothing.
-- Count lines in `CLAUDE.md`; under 150.
+- Run `scripts/check.sh all` and paste the last 15 lines of its output, verbatim, into your report. `doctor` inside it fails on any placeholder, kit note or unconfigured check that remains; fix those until it passes, or list exactly which remain and why.
 - Read `CLAUDE.md` once more as a stranger would: can a new session find the commands, the rules and the open items in under a minute?
 
 ## 6. Report
 
-End with: the tier chosen and why, files created or changed, lint rules added, what `check.sh all` returned, the open items you recorded, and the questions waiting on the owner. Keep it under 30 lines.
+End with: the tier chosen and why, files created or changed, the pasted `check.sh all` output, the open items you recorded, **Follow-ups** (lint rules still to write, checks still unconfigured), and the questions waiting on the owner. Keep it under 40 lines.

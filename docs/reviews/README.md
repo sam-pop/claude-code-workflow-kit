@@ -1,6 +1,6 @@
 # Review log
 
-Every reviewer and security-auditor report lands here automatically (`scripts/capture-review.sh`, on the SubagentStop hook), named `<date>-<sha>-<review|security>.md`. This folder is the raw material for the improvement loop; nothing here is edited by agents.
+Every reviewer and security-auditor report lands here automatically (`scripts/capture-review.sh`, on the SubagentStop and SubagentHandback hooks; it saves any final message starting `## Review:` or `## Security audit:`), named `<date>-<sha>-<review|security>.md`. This folder is the raw material for the improvement loop; nothing here is edited by agents.
 
 ## What you do with a finding
 

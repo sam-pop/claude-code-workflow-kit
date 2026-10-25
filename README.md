@@ -9,7 +9,7 @@ It is built for people who **review code more than they write it**: tech leads, 
 1. **Mechanical before judgment.** Anything a tool can check lives in `scripts/check.sh` (lint, types, tests, secret scan, SAST), never in a prompt. Models only get what needs judgment.
 2. **Decisions have one home.** `docs/decisions.md` holds what's decided; `docs/open.md` holds what isn't, with IDs. Agents never pick a value for an open item; they flag it.
 3. **Few agents, clear handoffs.** A planner (read-only) writes one decisive blueprint, a writer implements and verifies, a reviewer (read-only) reports findings with confidence. A security auditor joins on sensitive work.
-4. **Honest reports.** The writer says "unverified" when it couldn't run a check, and lists the defaults it picked that nobody specified. The reviewer only reports at 85%+ confidence and separates *Standards* (does it follow the rules) from *Spec* (does it do what was asked).
+4. **Honest reports, checked.** Unconfigured checks fail instead of passing. The writer pastes real check output and lists the defaults it picked that nobody specified. The reviewer re-runs the checks itself, separates *Standards* (does it follow the rules) from *Spec* (does it do what was asked), and shows what it held back below its confidence threshold.
 5. **`CLAUDE.md` is an index, not a log.** Capped at 150 lines and checked in CI. It's loaded on every turn; every line costs on every call.
 6. **The kit has to earn its place.** Metrics and kill criteria are written down before you start (`docs/rollout.md`). If it isn't lowering your hours per change or your escaped defects, you shrink it.
 
@@ -45,7 +45,7 @@ Pick one per repo; the tailoring session asks.
 | Script | Automations, glue code | `CLAUDE.md`, `check.sh`, short conventions |
 | Solo | One engineer, low blast radius | Writer + reviewer, planner for big work |
 | Shared | Client work, money or personal data, a second contributor | Everything, reviewer required before merge, security auditor before releases |
-| Review-only | Other people write the code; you are the reviewer of record | Reviewer + security auditor on their PRs, nothing else |
+| Review-only | Other people write the code; you are the reviewer of record | Reviewer + security auditor on their PRs, run from your own workspace, with no hooks in their repo |
 
 ## What's inside
 
@@ -61,10 +61,10 @@ Pick one per repo; the tailoring session asks.
 | `docs/reviews/` | Review log, written automatically; you mark findings fixed, dismissed or deferred |
 | `handoff.md` | Session-to-session state, rewritten at the end of each session |
 | `.claude/agents/` | `planner`, `writer`, `reviewer`, `security-auditor` |
-| `.claude/settings.json` | Hooks: block destructive git, lint after edits, save review reports, handoff reminder |
+| `.claude/settings.json` | Deny rules for destructive git and secrets, lint-after-edit hook, review capture hooks, fork mode off so agents run in sequence |
 | `scripts/check.sh` | The one verification entry point: `lint`, `test`, `build`, `security`, `doctor`, `all` |
-| `scripts/doctor.sh` | Kit hygiene: `CLAUDE.md` size, leftover placeholders, orphan open-item IDs, review stats |
-| `scripts/capture-review.sh` · `block-dangerous-git.sh` | Hook scripts |
+| `scripts/doctor.sh` | Kit hygiene: `CLAUDE.md` size, leftover placeholders, unconfigured checks, orphan or overdue open items, review agreement rate |
+| `scripts/lint-hook.sh` · `capture-review.sh` | Hook scripts: show lint failures to Claude; save reviewer and auditor reports |
 | `scripts/install.sh` | Copies the kit into a repo without overwriting |
 | `.github/workflows/check.yml` | CI runs `check.sh all` |
 
@@ -74,13 +74,13 @@ Every reviewer and auditor report is saved to `docs/reviews/`. You mark each fin
 
 ## Status
 
-v1.2, early. The structure is drawn from a working multi-agent setup on a production mobile app; this generic version has not yet been tailored against many stacks, so expect the first `TAILOR.md` run on your repo to find something to fix. The hook scripts read fields from Claude Code's hook input that are still being verified against current docs; check the [hooks](https://docs.claude.com/en/docs/claude-code/hooks) and [subagents](https://docs.claude.com/en/docs/claude-code/sub-agents) references if something doesn't fire.
+v1.3, early. The structure comes from a working multi-agent setup on a production mobile app. v1.3 follows an adversarial audit that checked the hooks and agent fields against the [Claude Code docs](https://code.claude.com/docs/en/hooks) and fixed what didn't hold: hooks whose output Claude never saw, a capture hook reading the wrong transcript, "read-only" agents with unrestricted shell, and checks that passed when unconfigured. It has not yet been tailored against many stacks, so expect your first `TAILOR.md` run to find something.
 
-Issues and pull requests welcome, especially tailored `conventions.md` examples for specific stacks.
+Requires a recent Claude Code (agent `omitClaudeMd` needs v2.1.271+). Issues and pull requests welcome, especially tailored `conventions.md` examples for specific stacks.
 
 ## Credits
 
-- The grilling question format, the two-axis review, the test anti-patterns, the agent-writing guidance and the git guardrail hook are adapted from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT). Install that plugin alongside this kit; they're designed to complement each other.
+- The question format, the two-axis review, the test anti-patterns and the agent-writing guidance are adapted from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT). Install that plugin alongside this kit; they're designed to complement each other.
 
 ## License
 
