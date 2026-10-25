@@ -16,7 +16,7 @@
 
 Claude Kit is a set of templates, agents, hooks and scripts you install into a repository. A Claude Code session then **tailors it to that repo's stack**, and from that point every change runs through a short, verifiable process: plan, implement, check, review. Claude follows that process instead of improvising one each time.
 
-It is designed for people who **review code more than they write it**: tech leads, fractional CTOs, solo founders running several codebases, and anyone accountable for code an agent or a contractor wrote.
+It's built for whoever has to **sign off on the code, not just write it**: tech leads, fractional CTOs juggling several codebases, founders shipping with agents instead of a team, and anyone accountable for work an agent or a contractor produced. If you'd rather read a clean diff and a short list of findings than watch an agent work, this is for you.
 
 ## Contents
 
