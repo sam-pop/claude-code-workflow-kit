@@ -12,13 +12,23 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Untailored kit (TAILOR.md still present): checks are unconfigured by design, so skip them.
+      - name: Kit not tailored yet
+        if: hashFiles('TAILOR.md') != ''
+        run: echo "::notice::TAILOR.md is present, so this is the untailored kit. Checks run once TAILOR.md has been followed and deleted."
       # kit: the stack's runtime and install, e.g.
       #   - uses: actions/setup-node@v4
+      #     if: hashFiles('TAILOR.md') == ''
       #     with: { node-version-file: .nvmrc, cache: npm }
       #   - run: npm ci
+      #     if: hashFiles('TAILOR.md') == ''
       - name: Install gitleaks
+        if: hashFiles('TAILOR.md') == ''
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | sudo tar -xz -C /usr/local/bin gitleaks
       - name: Install semgrep
+        if: hashFiles('TAILOR.md') == ''
         run: pipx install semgrep
-      - run: scripts/check.sh all
+      - name: check.sh all
+        if: hashFiles('TAILOR.md') == ''
+        run: scripts/check.sh all
