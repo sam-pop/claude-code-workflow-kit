@@ -215,4 +215,7 @@ verify() { scripts/verify-review.sh "$REPORT"; }
   assert_success
   assert_line "coverage: 2 changed files, 0 not in ### Coverage"
   assert_line --regexp '^checked: .* · base: origin/main@[0-9a-f]{7} · scripts/verify-review.sh$'
+  # the documented way to review against the local branch instead
+  BASE_BRANCH=refs/heads/main run verify
+  assert_line --regexp '^checked: .* · base: refs/heads/main@[0-9a-f]{7} · scripts/verify-review.sh$'
 }

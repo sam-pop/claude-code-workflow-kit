@@ -14,8 +14,9 @@
 #             files listed only under `not read (reason):` are reported as not read
 # Exit codes: 0 complete and every quote verified, 1 issues found, 2 usage or unreadable report.
 # Environment: BASE_BRANCH.
-# Base branch as in scripts/check.sh: $BASE_BRANCH, else origin/HEAD, else main. No base: coverage
-# is not checked. Needs python3 3.8+ (standard library only). Writes nothing; the caller appends.
+# Base branch: $BASE_BRANCH, else origin/HEAD, else main; origin/<base> is preferred to a local <base>
+# when it exists (as in scripts/codex-review.sh). To review against a local branch that is ahead of
+# origin, set BASE_BRANCH=refs/heads/<name>. No base: coverage is not checked. Needs python3 3.8+ (standard library only). Writes nothing; the caller appends.
 set -uo pipefail
 [[ $# -eq 1 && -f "$1" ]] || {
   sed -n '3,3p' "$0" >&2
@@ -73,7 +74,7 @@ missing = [s for s in need if s not in sections]
 
 # Base and changed files.
 mb = None
-# origin/<base> first, as scripts/check.sh does: a stale local <base> lists unrelated upstream files.
+# origin/<base> first, as scripts/codex-review.sh does: a stale local <base> lists unrelated upstream files.
 for ref in ("origin/" + base, base):
     if git("rev-parse", "--verify", "--quiet", ref + "^{commit}") is not None:
         out = git("merge-base", ref, "HEAD")
