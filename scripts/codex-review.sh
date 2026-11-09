@@ -13,7 +13,7 @@
 #             sensitive file in what Codex would read, or the review tooling itself changed in the range.
 # Environment: BASE_BRANCH (default: origin/HEAD, else main).
 #
-# Pinned (Nov 2026; sources: docs/rollout.md, Model profiles):
+# Pinned (Nov 2026; sources: docs/rollout.md, Extras, codex):
 #   high     gpt-6.1-sol  effort high
 #   plan     gpt-6.1-sol  effort high
 #   release  gpt-6-astra  effort high; if that call fails, one retry on gpt-6.1-sol effort xhigh

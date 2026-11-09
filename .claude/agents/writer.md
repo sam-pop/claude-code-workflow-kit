@@ -43,7 +43,7 @@ If a check prints NOT CONFIGURED or cannot run here, the work is **unverified**:
 
 Stop and report instead of looping when any of these happens:
 
-- `scripts/check.sh` prints `same failure N times: …` (the profiles extra counts for you), or the same check fails with the same error 3 times.
+- `scripts/check.sh` printing `same failure N times: …` is the first rule firing; without the profiles extra, the same check failing with the same error 3 times is.
 - The same file has been edited 4 times without the test result changing.
 - A check still fails after your own repair attempts.
 
@@ -54,7 +54,7 @@ d="$(git rev-parse --git-dir)/kit"; mkdir -p "$d" && git diff HEAD --binary > "$
 git ls-files --others --exclude-standard
 ```
 
-Start the report with this heading exactly; the review log saves reports by it, and the main session re-spawns the work at the next rung (CLAUDE.md, Workflow):
+Start the report with this heading exactly; the review log saves reports by it, and the main session re-spawns the work at the next rung (`template/docs/rollout.md`, Extras, profiles):
 
 ```text
 ## STUCK: <change>

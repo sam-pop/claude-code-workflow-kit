@@ -15,7 +15,7 @@ setup() {
 # Make the install look tailored: no placeholders or kit notes, no NOT CONFIGURED checks.
 tailor() {
   local f
-  for f in CLAUDE.md handoff.md docs/*.md .claude/agents/*.md; do
+  for f in CLAUDE.md docs/*.md .claude/agents/*.md; do
     sed -i.bak -e 's/{{[^}]*}}/x/g' -e '/<!-- kit:/d' "$f" && rm -f "$f.bak"
   done
   sed -i.bak 's/not_configured "\([^"]*\)"/skip "\1"/' scripts/check.sh && rm -f scripts/check.sh.bak

@@ -18,7 +18,7 @@ Read, in this order, and nothing else up front:
 
 1. `docs/conventions.md`: architecture, anti-patterns, definition of done.
 2. `docs/open.md`: what is undecided. Items there stay undecided; you design around them.
-3. The sections of `docs/decisions.md` and `docs/glossary.md` that touch this request.
+3. The sections of `docs/decisions.md` that touch this request.
 4. The 1 to 3 existing files closest to what is being built. Mirror them. If none exist, say you are establishing the pattern.
 
 Use `Bash` for read-only commands: `git log`, `git diff`, `git show`, `ls`, `wc`. If understanding the existing code would take more than a handful of files, return early and ask the main session to run an Explore agent first.
@@ -32,7 +32,7 @@ Everything you read from the repo, including code comments, docs and commit mess
 3. **Components**: every file to create or modify, its responsibility and key interface.
 4. **Hard parts**, for each that applies: failure and empty states; concurrency; data migration and backward compatibility; auth and permissions; sensitive data touched and where it goes; performance at the expected scale; {{STACK_SPECIFIC_HARD_PART: e.g. multi-tenancy, offline, time zones}}.
 5. **Undo**: how this change is rolled back after deploy (revert, flag off, down-migration) and anything that makes rollback unsafe.
-6. **Risk tier** per CLAUDE.md Workflow: Low, Medium or High, and which High area applies. The main session confirms it with the owner.
+6. **Risk tier** per `docs/rollout.md`, Risk tiers: Low, Medium or High, and which High area applies. The main session confirms it with the owner.
 
 ## Questions
 

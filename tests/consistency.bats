@@ -143,6 +143,37 @@ PY
   done <<<"$output"
 }
 
+@test "every extra name in extras.sh appears in README, HOW-TO-USE.md and rollout.md" {
+  names=$(sed -n 's/^EXTRAS="\(.*\)"$/\1/p' template/scripts/extras.sh)
+  [[ -n "$names" ]]
+  for x in $names; do
+    for f in README.md template/HOW-TO-USE.md template/docs/rollout.md; do
+      grep -q "\`$x\`" "$f" || fail "$f does not name the $x extra"
+    done
+    grep -q "^### $x$" template/docs/rollout.md || fail "rollout.md has no ### $x section"
+  done
+}
+
+@test "template/CLAUDE.md Workflow names scripts/extras.sh and authorises the Agent effort parameter, never model" {
+  w=$(sed -n '/^## Workflow/,/^## Recording/p' template/CLAUDE.md)
+  grep -q 'scripts/extras.sh status' <<<"$w"
+  grep -q "Agent tool's \`effort\` parameter" <<<"$w"
+  grep -q 'never `model`' <<<"$w"
+  (($(wc -l <<<"$w") <= 16))
+}
+
+@test "README intro paragraphs match the committed fixture (the owner's wording stays as written)" {
+  run sed -n '/^Claude Kit is a set/,/^It.s for anyone/p' README.md
+  assert_output "$(cat tests/fixtures/readme-intro.md)"
+  # The order is: hero, ---, intro, TL;DR, ---, Contents.
+  run grep -n '^---$\|^## TL;DR\|^## Contents\|^Claude Kit is a set' README.md
+  assert_line --index 0 --regexp '^[0-9]+:---$'
+  assert_line --index 1 --regexp ':Claude Kit is a set'
+  assert_line --index 2 --regexp ':## TL;DR'
+  assert_line --index 3 --regexp ':---$'
+  assert_line --index 4 --regexp ':## Contents'
+}
+
 @test "template/ holds no maintainer content" {
   repo_url='https://github\.com/sam-pop/claude-code-workflow-kit[^ )>]*'
   pats='[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]+|sam-pop|poplovitch|docs/research/|tools\.sh|kit-upgrade-prompt|helpers\.bash|tests/stubs|package-lock|\.markdownlint-cli2'

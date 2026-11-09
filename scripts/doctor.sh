@@ -3,7 +3,7 @@
 # Usage: scripts/doctor.sh   Exit codes: 0 no FAIL (warnings allowed), 1 any FAIL.
 # Environment: DOCTOR_SKIP_PATHS, space-separated path prefixes the O-id scan (check 3) leaves out;
 # read-only checks of CLAUDE_CODE_EFFORT_LEVEL, CLAUDE_CODE_SUBAGENT_MODEL_FORCE and the provider
-# variables CLAUDE_CODE_USE_BEDROCK, CLAUDE_CODE_USE_VERTEX and CLAUDE_CODE_USE_FOUNDRY (check 6).
+# variables CLAUDE_CODE_USE_BEDROCK, CLAUDE_CODE_USE_VERTEX and CLAUDE_CODE_USE_FOUNDRY (check 5).
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 rc=0
@@ -17,7 +17,7 @@ echo "== doctor"
 # Files the kit owns. Placeholder and ID checks look only here, so ${{ secrets.X }} in workflows
 # and {{ }} in app templates (Handlebars, Vue, Angular) are never flagged.
 KIT_FILES=()
-for f in CLAUDE.md handoff.md docs/*.md .claude/agents/*.md; do [[ -f "$f" ]] && KIT_FILES+=("$f"); done
+for f in CLAUDE.md docs/*.md .claude/agents/*.md; do [[ -f "$f" ]] && KIT_FILES+=("$f"); done
 grep -qE '^[[:space:]]*not_configured "' scripts/check.sh 2>/dev/null && fail "scripts/check.sh still has NOT CONFIGURED checks: $(grep -oE 'not_configured "[^"]+"' scripts/check.sh | cut -d'"' -f2 | tr '\n' ',' | sed 's/,$//')"
 
 # 1. CLAUDE.md stays an index.
@@ -38,7 +38,7 @@ oids() { grep -ohE '(^|[^A-Za-z0-9_-])O[0-9]+([^A-Za-z0-9_-]|$)' "$@" 2>/dev/nul
 if [[ -f docs/open.md ]]; then
   known=$(oids docs/open.md docs/decisions.md)
   scan=()
-  for f in CLAUDE.md handoff.md docs/*.md .claude/agents/*.md .claude/optional/*.md; do
+  for f in CLAUDE.md docs/*.md .claude/agents/*.md .claude/optional/*.md; do
     [[ -f "$f" ]] || continue
     for p in ${DOCTOR_SKIP_PATHS:-}; do [[ "$f" == "$p" || "$f" == "${p%/}/"* ]] && continue 2; done
     scan+=("$f")
@@ -64,13 +64,7 @@ if [[ -f docs/open.md ]]; then
   ((count > 15)) && fail "$count open items; decide or delete some (cap 15)"
 fi
 
-# 5. handoff.md freshness, when tracked.
-if [[ -f handoff.md ]] && git ls-files --error-unmatch handoff.md >/dev/null 2>&1; then
-  last=$(git log -1 --format=%h -- handoff.md)
-  [[ -n "$last" ]] && behind=$(git rev-list --count "$last"..HEAD) && ((behind > 5)) && warn "handoff.md last changed $behind commits ago"
-fi
-
-# 6. Model and effort settings that silently undo the per-role setup (docs/rollout.md).
+# 5. Model and effort settings that silently undo the per-role setup (docs/rollout.md).
 [[ -n "${CLAUDE_CODE_EFFORT_LEVEL:-}" ]] && warn "CLAUDE_CODE_EFFORT_LEVEL is set: it overrides every agent's \`effort:\`, the writer ladder and risk-scaled review; unset it"
 [[ -n "${CLAUDE_CODE_SUBAGENT_MODEL_FORCE:-}" ]] && warn "CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set: it forces one model on every subagent; frontmatter is ignored"
 for f in /etc/claude-code/managed-settings.json "/Library/Application Support/ClaudeCode/managed-settings.json" "$HOME/.claude/settings.json" .claude/settings*.json; do
@@ -117,7 +111,7 @@ kits=$(git ls-files -co --exclude-standard '*.kit' 2>/dev/null | wc -l | tr -d '
 [[ "$kits" != 0 ]] && warn "$kits unmerged *.kit file(s): merge each into its original, then delete it"
 [[ -f .claude/kit-upgrade.md ]] && warn "upgrade merge not finished: .claude/kit-upgrade.md is still present (open Claude Code and say: Read .claude/kit-upgrade.md)"
 
-# 7. Review log stats, for the monthly pass: only with the metrics extra on.
+# 6. Review log stats, for the monthly pass: only with the metrics extra on.
 [[ -f scripts/review-stats.sh ]] && bash scripts/review-stats.sh
 
 exit $rc

@@ -1,16 +1,18 @@
 # Review log
 
-Every reviewer, security-auditor, codex-reviewer and stuck-writer report lands here automatically (`scripts/capture-review.sh`, on the SubagentStop and SubagentHandback hooks; it saves any final message starting `## Review:`, `## Security audit:`, `## Codex review:` or `## STUCK:`), named `<date>-<sha>-<review|security|codex|stuck>.md`. This folder is the raw material for the improvement loop; nothing here is edited by agents.
+Every reviewer, security-auditor, codex-reviewer and stuck-writer report lands here automatically (`scripts/capture-review.sh`, on the SubagentStop and SubagentHandback hooks; it saves any final message starting `## Review:`, `## Security audit:`, `## Codex review:`, `## Codex plan review:` or `## STUCK:`), named `<date>-<sha>-<review|security|codex|codex-plan|stuck>.md`. This folder is the raw material for the improvement loop; nothing here is edited by agents.
 
 Kinds:
 
-- `review`, `security`: the Claude reviewer and auditor. The reviewer's `### Run` line (tier, writer rung and trigger, requested model/effort) is the per-task ladder log; on audits, fill in the `served:` model from `/tasks`.
-- `codex`: the Codex second opinion. Mark its findings the same way as any other; the doctor reports them on their own `codex (30d)` line.
-- `stuck`: a writer that hit a stop rule. These are escalation records, not findings to tick off; the doctor counts them as `escalations (30d)`.
+- `review`, `security`: the Claude reviewer and auditor. The reviewer's `### Run` line (tier, writer rung and trigger, requested model/effort) is the per-task ladder log, filled in when the profiles extra is on; on audits, fill in the `served:` model from `/tasks`.
+- `codex`: the Codex second opinion (codex extra); a plan review is saved as `*-codex-plan.md`. Mark its findings the same way as any other.
+- `stuck`: a writer that hit a stop rule. These are escalation records, not findings to tick off.
+
+With the metrics extra on, `check.sh doctor` counts each kind (`codex (30d)`, `escalations (30d)`).
 
 ## Verification
 
-When a review or codex report is saved, the hook runs `scripts/verify-review.sh` on it and appends a `### Verification` block:
+Only with the verify-review extra on (`scripts/extras.sh on verify-review`). When a review or codex report is saved, the hook runs `scripts/verify-review.sh` on it and appends a `### Verification` block:
 
 ```text
 ### Verification
@@ -25,7 +27,7 @@ coverage: 6 changed files, 1 not in ### Coverage: src/routes.ts
 - A quote is `verified` when the text after the `>` marker under a finding appears within 3 lines of the cited lines, or on a line the diff removed. `unverified` means the reviewer may be describing code that is not there: check that finding first. `unquoted` findings have no quote line.
 - `coverage` lists changed files the reviewer did not name under `### Coverage`.
 
-When anything is off, the hook also shows a one-line summary in the session. `check.sh doctor` counts incomplete reports and unverified quotes in its review stats.
+When anything is off, the hook also shows a one-line summary in the session. With the metrics extra on, `check.sh doctor` counts incomplete reports and unverified quotes in its review stats.
 
 ## What you do with a finding
 
@@ -37,7 +39,7 @@ Edit the saved report, not the chat:
 
 ## Monthly pass (ten minutes)
 
-1. `scripts/check.sh doctor` — read the review stats and the recurring-dismissal lines.
+1. `scripts/check.sh doctor` — with the metrics extra on, read the review stats and the recurring-dismissal lines.
 2. A finding category that recurs 3+ times across reports → write the lint or semgrep rule, add it to `check.sh lint`, and mark the conventions row **mechanical**.
 3. A dismissal reason that recurs 2+ times → add a line to the reviewer's "False positives".
 4. Reports older than 90 days: delete, or keep only the ones tied to an accepted risk.

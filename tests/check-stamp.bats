@@ -248,7 +248,7 @@ objects() { find "$(git rev-parse --git-path objects)" -type f | sort; }
 @test "check.sh all records the stamp on a pass and not on a failure" {
   use_stub claude
   # The rest of the install tailored too, and security reduced to a pass/fail switch.
-  for f in CLAUDE.md handoff.md docs/*.md .claude/agents/*.md; do
+  for f in CLAUDE.md docs/*.md .claude/agents/*.md; do
     [[ -f "$f" ]] || continue
     sed -i.bak -e 's/{{[^}]*}}/x/g' -e '/<!-- kit:/d' "$f" && rm -f "$f.bak"
   done

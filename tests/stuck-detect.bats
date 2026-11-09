@@ -110,7 +110,7 @@ failures() { git rev-parse --git-path kit/failures; }
 }
 
 @test "with every extra off, check.sh all on a tailored repo leaves no kit state in .git" {
-  for f in CLAUDE.md handoff.md docs/*.md .claude/agents/*.md; do
+  for f in CLAUDE.md docs/*.md .claude/agents/*.md; do
     [[ -f "$f" ]] || continue
     sed -i.bak -e 's/{{[^}]*}}/x/g' -e '/<!-- kit:/d' "$f" && rm -f "$f.bak"
   done

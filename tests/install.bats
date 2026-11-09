@@ -187,7 +187,7 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   assert_success
 }
 
-@test "upgrade of a repo installed from kit 1.4: retired 0, codex stays on, profiles and metrics on, the rest off" {
+@test "upgrade of a repo installed from kit 1.4: only handoff.md and docs/glossary.md retired, codex stays on, profiles and metrics on, the rest off" {
   git -C "$REPO_ROOT" cat-file -e "0823256^{commit}" 2>/dev/null || skip "kit 1.4 commit 0823256 not in this clone"
   k14="$BATS_TEST_TMPDIR/kit14"
   mkdir -p "$k14"
@@ -201,7 +201,10 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   git -C "$TARGET" add -A && git -C "$TARGET" commit -qm k14
   run "$KIT/scripts/install.sh" --upgrade "$TARGET"
   assert_success
-  assert_line --partial "retired 0"
+  assert_line --partial "retired 2"
+  assert_line --regexp '^retired: +handoff\.md '
+  assert_line --regexp '^retired: +docs/glossary\.md '
+  [[ "$(grep -c '^retired:' <<<"$output")" == 2 ]]
   refute_line --regexp '^new: +\.claude/optional/codex-reviewer.md'
   # 1.5 and 1.6 add exactly these files: stop-warning and verify-review arrive off, metrics on.
   assert_equal "$(grep -E '^new: ' <<<"$output" | awk '{print $2}' | sort | tr '\n' ' ')" \
@@ -238,13 +241,16 @@ installed_from_15() {
   git -C "$TARGET" add -A && git -C "$TARGET" commit -qm k15
 }
 
-@test "upgrade from kit 1.5: every extra it ran stays on, the Stop hook stays, status is clean" {
+@test "upgrade from kit 1.5: every extra it ran stays on, the Stop hook stays, status is clean, only handoff.md and docs/glossary.md retired" {
   use_stub codex
   installed_from_15
   cp "$TARGET/.claude/settings.json" "$BATS_TEST_TMPDIR/settings15"
   run "$KIT/scripts/install.sh" --upgrade "$TARGET"
   assert_success
-  assert_line --partial "retired 0"
+  assert_line --partial "retired 2"
+  assert_line --regexp '^retired: +handoff\.md '
+  assert_line --regexp '^retired: +docs/glossary\.md '
+  [[ "$(grep -c '^retired:' <<<"$output")" == 2 ]]
   assert_line --regexp '^replaced: +\.claude/settings\.json$'
   assert_line --partial "hook added: Stop"
   assert_line --regexp '^new: +scripts/review-stats\.sh$'
