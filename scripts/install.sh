@@ -6,7 +6,9 @@
 #   --upgrade   re-run on a repo that has the kit: classify every kit file (replaced, current,
 #               tailored, tailored (kit unchanged), new, skipped, never re-added, retired) and
 #               write .claude/kit-upgrade.md, the prompt for the merge session
-# Kit files are what `git ls-files` lists in the kit checkout (a plain walk if it is not one).
+# Copies template/ as is: kit files are what `git ls-files -- template/` lists in the kit checkout
+# (a plain walk of template/ if it is not one), installed at the same path minus the template/ prefix.
+# Reads CHANGELOG.md and scripts/kit-upgrade-prompt.md; never writes to the kit.
 #   --force     upgrade even though a previous merge is unfinished (.claude/kit-upgrade.md or a .kit
 #               file is still there); files with a .kit sibling stay tailored
 #   --dry-run   print the classification and write nothing
@@ -14,6 +16,7 @@
 # installed). An unmodified file is replaced in place on upgrade; a modified one gets a .kit sibling.
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
+TPL="$KIT/template"
 MODE=install; DRY=0; FORCE=0; TARGET=""
 for a in "$@"; do
   case "$a" in
@@ -27,22 +30,25 @@ done
 [[ -n "$TARGET" ]] || { echo "usage: install.sh [--upgrade [--force]] [--dry-run] /path/to/repo"; exit 2; }
 [[ -d "$TARGET" ]] || { echo "not a directory: $TARGET"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 is required"; exit 1; }
-TARGET="$(cd "$TARGET" && pwd)"
+[[ -d "$TPL" ]] || { echo "the kit has no template/ directory: $TPL"; exit 1; }
+TARGET="$(cd "$TARGET" && pwd -P)"
+TPL="$(cd "$TPL" && pwd -P)"
+case "$TARGET/" in
+  "$TPL"/*) echo "refusing to install into the kit's own template/: $TARGET"; exit 1 ;;
+esac
 
 if git -C "$KIT" rev-parse --git-dir >/dev/null 2>&1; then
-  n=$(git -C "$KIT" status --porcelain 2>/dev/null | { grep -v ' docs/reviews/' || true; } | wc -l | tr -d ' ')
-  [[ "$n" == 0 ]] || echo "warn: the kit checkout has $n uncommitted path(s): untracked files are not installed until committed; modified tracked files are installed as they are now" >&2
+  n=$(git -C "$KIT" status --porcelain -- template/ CHANGELOG.md scripts/kit-upgrade-prompt.md 2>/dev/null | wc -l | tr -d ' ')
+  [[ "$n" == 0 ]] || echo "warn: the kit checkout has $n uncommitted path(s) under template/, CHANGELOG.md or scripts/kit-upgrade-prompt.md: untracked files are not installed until committed; modified tracked files are installed as they are now" >&2
 fi
 
-python3 - "$KIT" "$TARGET" "$MODE" "$DRY" "$FORCE" <<'PY' || exit $?
+python3 - "$KIT" "$TPL" "$TARGET" "$MODE" "$DRY" "$FORCE" <<'PY' || exit $?
 import datetime, hashlib, os, re, shutil, subprocess, sys
 
-kit, target, mode, dry, force = sys.argv[1:6]
+kit, tpl, target, mode, dry, force = sys.argv[1:7]
 upgrade, dry, force = mode == "upgrade", dry == "1", force == "1"
 today = datetime.date.today().isoformat()
 
-EXCLUDE_EXACT = {"scripts/install.sh", "LICENSE", "CHANGELOG.md", "README.md"}
-EXCLUDE_PREFIX = ("docs/assets/", "docs/research/", ".claude/kit-")
 NEVER_READD = {"TAILOR.md", "HOW-TO-USE.md"}
 # A repo with cross-model review on has this file under agents/, not optional/.
 ALIAS = {".claude/optional/codex-reviewer.md": ".claude/agents/codex-reviewer.md"}
@@ -52,26 +58,21 @@ def sha(path):
         return hashlib.sha256(f.read()).hexdigest()
 
 def kit_files():
+    """Paths relative to template/ (and so to the target root)."""
+    listed = None
     try:
-        r = subprocess.run(["git", "-C", kit, "ls-files", "-z"], capture_output=True)
-        listed = r.stdout.decode("utf-8").split("\0") if r.returncode == 0 else None
+        r = subprocess.run(["git", "-C", kit, "ls-files", "-z", "--", "template/"], capture_output=True)
+        if r.returncode == 0:
+            listed = [p[len("template/"):] for p in r.stdout.decode("utf-8").split("\0")
+                      if p.startswith("template/")]
     except OSError:
-        listed = None
-    if listed is None:  # not a git checkout: every file except .git
+        pass
+    if not listed:  # not a git checkout, or template/ is not tracked there: walk template/
         listed = []
-        for root, dirs, files in os.walk(kit):
+        for root, dirs, files in os.walk(tpl):
             dirs[:] = [d for d in dirs if d != ".git"]
-            listed += [os.path.relpath(os.path.join(root, n), kit).replace(os.sep, "/") for n in files]
-    out = []
-    for rel in listed:
-        if not rel or not os.path.isfile(os.path.join(kit, rel)):
-            continue
-        if rel in EXCLUDE_EXACT or rel.startswith(EXCLUDE_PREFIX):
-            continue
-        if rel.startswith("docs/reviews/") and rel != "docs/reviews/README.md":
-            continue  # the kit's own review log
-        out.append(rel)
-    return sorted(set(out))
+            listed += [os.path.relpath(os.path.join(root, n), tpl).replace(os.sep, "/") for n in files]
+    return sorted({rel for rel in listed if rel and os.path.isfile(os.path.join(tpl, rel))})
 
 def changelog():
     p = os.path.join(kit, "CHANGELOG.md")
@@ -109,7 +110,7 @@ if os.path.isfile(version_path):
 from_version = old_info.get("version", "unknown")
 
 files = kit_files()
-kit_hash = {rel: sha(os.path.join(kit, rel)) for rel in files}
+kit_hash = {rel: sha(os.path.join(tpl, rel)) for rel in files}
 
 def dst_of(rel):
     if not os.path.exists(os.path.join(target, rel)) and rel in ALIAS \
@@ -168,7 +169,7 @@ for rel in files:
     cls, dst = classify(rel)
     groups[cls].append(dst)
     note = NOTE.get(cls, "").format(dst=dst)
-    src, out = os.path.join(kit, rel), os.path.join(target, dst)
+    src, out = os.path.join(tpl, rel), os.path.join(target, dst)
     if upgrade and cls == "current" and os.path.exists(out + ".kit"):  # left over from --force
         note = f"(stale {dst}.kit {'would be ' if dry else ''}deleted: the file now matches the kit)"
         if not dry:
@@ -212,7 +213,7 @@ if upgrade:
         mm = re.match(r"## \[(\d+(?:\.\d+)*)\]", s)
         if mm and (from_version == "unknown" or vkey(mm.group(1)) > vkey(from_version)):
             keep.append(s.rstrip() + "\n")
-    prompt = open(os.path.join(kit, ".claude", "kit-upgrade-prompt.md"), encoding="utf-8").read().rstrip()
+    prompt = open(os.path.join(kit, "scripts", "kit-upgrade-prompt.md"), encoding="utf-8").read().rstrip()
     lines = [prompt, "", f"# Kit upgrade: {from_version} to {version}", "",
              f"Written by scripts/install.sh --upgrade on {today} from kit commit {commit}.", ""]
     heads = {"tailored": "tailored: merge each file with its .kit sibling",

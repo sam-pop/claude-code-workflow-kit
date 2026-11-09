@@ -1,0 +1,30 @@
+# Review log
+
+Every reviewer, security-auditor, codex-reviewer and stuck-writer report lands here automatically (`scripts/capture-review.sh`, on the SubagentStop and SubagentHandback hooks; it saves any final message starting `## Review:`, `## Security audit:`, `## Codex review:` or `## STUCK:`), named `<date>-<sha>-<review|security|codex|stuck>.md`. This folder is the raw material for the improvement loop; nothing here is edited by agents.
+
+Kinds:
+
+- `review`, `security`: the Claude reviewer and auditor. The reviewer's `### Run` line (tier, writer rung and trigger, requested model/effort) is the per-task ladder log; on audits, fill in the `served:` model from `/tasks`.
+- `codex`: the Codex second opinion. Mark its findings the same way as any other; the doctor reports them on their own `codex (30d)` line.
+- `stuck`: a writer that hit a stop rule. These are escalation records, not findings to tick off; the doctor counts them as `escalations (30d)`.
+
+## What you do with a finding
+
+Edit the saved report, not the chat:
+
+- Fixed → `- [x] [95] …` (tick the box).
+- Not a real issue → `- [x] [95] … — dismissed: <short reason>`. Use the **same wording** for the same reason each time; `check.sh doctor` counts recurring reasons and suggests them for the reviewer's false-positives list.
+- Real but deferred → leave unticked and add the O-id you created for it in `docs/open.md`.
+
+## Monthly pass (ten minutes)
+
+1. `scripts/check.sh doctor` — read the review stats and the recurring-dismissal lines.
+2. A finding category that recurs 3+ times across reports → write the lint or semgrep rule, add it to `check.sh lint`, and mark the conventions row **mechanical**.
+3. A dismissal reason that recurs 2+ times → add a line to the reviewer's "False positives".
+4. Reports older than 90 days: delete, or keep only the ones tied to an accepted risk.
+
+Pre-committed thresholds (3 and 2) are deliberate: change them in `docs/decisions.md`, not ad hoc.
+
+## Privacy
+
+Reports quote code. On a Shared repo, that is fine inside the repo; never paste one into a chat, ticket or email outside it without reading it first.
