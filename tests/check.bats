@@ -66,6 +66,7 @@ hook() { scripts/lint-hook.sh </dev/null; }
 
 # The kit's own check.sh, run in a scratch repo so the result depends only on the files given here.
 root_check_repo() {
+  export KIT_STUCK_INNER=1 # the root's own check.sh, without the stuck detector
   R="$BATS_TEST_TMPDIR/root"
   mkdir -p "$R/scripts"
   cp "$REPO_ROOT/scripts/check.sh" "$R/scripts/"

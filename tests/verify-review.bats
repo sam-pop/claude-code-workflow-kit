@@ -8,6 +8,7 @@ setup() {
   isolate
   installed_target
   cd "$TARGET" || exit 1
+  extras_on verify-review
   mkdir -p src
   printf '%s\n' "line one" "line two" "const total = items.reduce((a, b) => a + b, 0);" "line four" \
     "line five" "line six" "line seven" "line eight" "line nine" "line ten" >src/app.js
@@ -185,4 +186,27 @@ verify() { scripts/verify-review.sh "$REPORT"; }
   report $'- [ ] [90] ../outside.txt:1 — wrong\n  > secret line here'
   run verify
   assert_line --partial "path outside the repository"
+}
+
+@test "a changed symlink to a file outside the repo, cited by its short name, is not verified and the outside file is never opened (item A)" {
+  printf '%s\n' "outside secret line" >"$BATS_TEST_TMPDIR/outside.txt"
+  ln -s "$BATS_TEST_TMPDIR/outside.txt" src/escape
+  git add -A && git commit -qm link
+  report $'- [ ] [90] escape:1 — wrong\n  > outside secret line' 'read: src/app.js, src/old.js, src/escape'
+  run verify
+  assert_failure 1
+  assert_line "quotes: 0 verified, 1 unverified, 0 unquoted"
+  assert_line --partial "file not found"
+}
+
+@test "the remote-tracking base wins over a stale local base: coverage uses origin/main's changed set (item A)" {
+  # origin/main is at the first feature commit (src/old.js already gone); local main still sits at the original base
+  git update-ref refs/remotes/origin/main HEAD
+  echo "later" >src/other.js
+  git add -A && git commit -qm later
+  report $'- [ ] [90] `src/app.js:3` — wrong\n  > const total = items.reduce((a, b) => a + b, 0);' 'read: src/app.js, src/other.js'
+  run verify
+  assert_success
+  assert_line "coverage: 2 changed files, 0 not in ### Coverage"
+  assert_line --regexp 'base: origin/main@'
 }

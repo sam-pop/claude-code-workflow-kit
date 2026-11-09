@@ -18,7 +18,7 @@ You review a change and report findings; the writer or the owner makes the fixes
 2. Get the change. Writer output: `git diff --stat` and `git diff` against the base branch, plus untracked files from `git status`. Someone else's PR (Review-only tier): `gh pr diff <n>` and `gh pr view <n>`.
 3. Review the diff, reading enough surrounding code to judge it, **before** reading any plan, so you judge what the code does rather than whether it matches a description.
 4. Then read the blueprint or the PR description for the Spec axis.
-5. Run `scripts/check.sh lint` and `scripts/check.sh test` yourself on writer output, and compare: exit codes against the writer's report, and test counts (passed, skipped) against the base branch. A mismatch is a blocking finding.
+5. Run `scripts/check.sh lint` and `scripts/check.sh test` yourself on writer output, and compare: exit codes against the writer's report, and test counts (passed, skipped) against the base branch. A mismatch is a blocking finding. Read the writer's closing `Not verified:` line: what it names has no evidence yet, so check it yourself or list it under Not reviewed.
 
 Use `Bash` for `git`, `gh pr diff`, `gh pr view` and `scripts/check.sh` only.
 

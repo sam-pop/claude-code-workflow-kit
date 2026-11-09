@@ -15,7 +15,7 @@ setup() {
 # Make the install look tailored: no placeholders or kit notes, no NOT CONFIGURED checks.
 tailor() {
   local f
-  for f in CLAUDE.md handoff.md docs/*.md .claude/agents/*.md; do
+  for f in CLAUDE.md docs/*.md .claude/agents/*.md; do
     sed -i.bak -e 's/{{[^}]*}}/x/g' -e '/<!-- kit:/d' "$f" && rm -f "$f.bak"
   done
   sed -i.bak 's/not_configured "\([^"]*\)"/skip "\1"/' scripts/check.sh && rm -f scripts/check.sh.bak
@@ -87,20 +87,13 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   assert_output --partial "warn: CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set"
 }
 
-@test "warns on a Claude Code older than 2.1.292, not on a newer one" {
-  tailor
-  run env STUB_CLAUDE_VERSION=2.1.291 scripts/check.sh doctor
-  assert_output --partial "warn: Claude Code 2.1.291 is older than 2.1.292"
-  run env STUB_CLAUDE_VERSION=2.1.292 scripts/check.sh doctor
-  refute_output --partial "is older than"
-}
-
 @test "warns on Sonnet below high, effort: max, and a reviewer at low" {
   tailor
+  extras_on profiles
   scripts/set-models.sh lite >/dev/null
   sed -i.bak 's/^effort: high$/effort: medium/' .claude/agents/writer.md
   sed -i.bak 's/^effort: high$/effort: max/' .claude/agents/planner.md
-  sed -i.bak 's/^effort: high$/effort: low/' .claude/agents/reviewer.md
+  sed -i.bak 's/^effort: medium$/effort: low/' .claude/agents/reviewer.md
   rm -f .claude/agents/*.bak
   run scripts/check.sh doctor
   assert_output --partial "warn: writer is sonnet at effort: medium"
@@ -108,13 +101,13 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   assert_output --partial "warn: reviewer has effort: low"
 }
 
-@test "warns when codex-reviewer is on but codex is missing, and on CODEX_API_KEY in a workflow" {
+@test "warns when codex is on but the codex CLI is missing, and on CODEX_API_KEY in a workflow (via extras.sh status)" {
   tailor
-  mkdir -p .claude/agents && mv .claude/optional/codex-reviewer.md .claude/agents/
+  extras_on codex
   echo "      CODEX_API_KEY: x" >>.github/workflows/check.yml
   path_without codex
   run bash scripts/doctor.sh
-  assert_output --partial "warn: codex-reviewer is enabled but the codex CLI is not installed"
+  assert_output --partial "warn: codex is on but the codex CLI is not installed"
   assert_output --partial "warn: CODEX_API_KEY in .github/workflows"
 }
 
@@ -127,33 +120,49 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   assert_output --partial "warn: upgrade merge not finished"
 }
 
-@test "codex report stats read every report, including a file name with a space" {
+@test "warns when stop-warning is on and a tailored check.sh does not run check-stamp record, even if a comment names it (Opus 50)" {
   tailor
-  mkdir -p docs/reviews
-  printf -- '- [x] [90] fixed\n' >docs/reviews/2026-01-01-000000-abc-codex.md
-  printf -- '- [x] [80] a dismissed: noise\n' >"docs/reviews/2026-01-02 copy-abc-codex.md"
-  printf -- '- [ ] [90] open\n' >docs/reviews/2026-01-01-000000-abc-review.md
-  run bash scripts/doctor.sh
-  assert_success
-  assert_output --partial "codex (30d): reports 2 fixed 1 dismissed 1"
-}
-
-@test "warns when a tailored check.sh does not run check-stamp record, even if a comment names it (Opus 50)" {
-  tailor
+  extras_on stop-warning
   sed -i.bak '/check-stamp\.sh record/d' scripts/check.sh && rm -f scripts/check.sh.bak
   grep -q 'check-stamp' scripts/check.sh
   run bash scripts/doctor.sh
-  assert_output --partial "warn: scripts/check.sh does not run scripts/check-stamp.sh record"
-  assert_output --partial "https://github.com/sam-pop/claude-code-workflow-kit/blob/main/CHANGELOG.md"
+  assert_success
+  assert_output --partial "warn: stop-warning is on but scripts/check.sh does not run scripts/check-stamp.sh record"
 }
 
-@test "review stats count incomplete reports and unverified quotes" {
+@test "no check-stamp warning while stop-warning is off, even without the stamp lines" {
+  tailor
+  sed -i.bak '/check-stamp\.sh record/d' scripts/check.sh && rm -f scripts/check.sh.bak
+  run bash scripts/doctor.sh
+  assert_success
+  refute_output --partial "check-stamp"
+}
+
+@test "a half-enabled extra is a warning, not a FAIL" {
+  tailor
+  extras_on stop-warning
+  python3 - .claude/settings.json <<'PY2'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+del d["hooks"]["Stop"]
+open(p, "w").write(json.dumps(d, indent=2) + "\n")
+PY2
+  run bash scripts/doctor.sh
+  assert_success
+  assert_equal "$(fails)" 0
+  assert_output --partial "warn: stop-warning is on but .claude/settings.json has no Stop hook for scripts/check-stamp.sh"
+}
+
+@test "review stats print only with the metrics extra on" {
   tailor
   mkdir -p docs/reviews
-  printf -- '- [ ] [90] a\nstatus: incomplete (missing: ### Coverage)\nquotes: 1 verified, 2 unverified, 0 unquoted\n' >docs/reviews/2026-01-01-000000-abc-review.md
-  printf -- '- [ ] [90] b\nstatus: complete\nquotes: 0 verified, 1 unverified, 1 unquoted\n' >docs/reviews/2026-01-02-000000-abc-review.md
+  printf -- '- [ ] [90] a\n' >docs/reviews/2026-01-01-000000-abc-review.md
   run bash scripts/doctor.sh
-  assert_output --partial "unmarked: 2  incomplete: 1  unverified quotes: 3"
+  refute_output --partial "reviews (30d)"
+  extras_on metrics
+  run bash scripts/doctor.sh
+  assert_output --partial "reviews (30d): 1 "
 }
 
 @test "no false O-id FAILs from compiler flags, product names or files the kit does not own (B4)" {
@@ -166,16 +175,6 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   run bash scripts/doctor.sh
   assert_success
   refute_output --partial "is referenced"
-}
-
-@test "the review stats count only reports from the last 30 days (M6)" {
-  tailor
-  mkdir -p docs/reviews
-  printf -- '- [ ] [90] a\n' >docs/reviews/2020-01-01-000000-abc-review.md
-  printf -- '- [ ] [90] b\n' >docs/reviews/2026-01-01-000000-abc-review.md
-  touch -t 202001010000 docs/reviews/2020-01-01-000000-abc-review.md
-  run bash scripts/doctor.sh
-  assert_output --partial "reviews (30d): 1 "
 }
 
 @test "a tailored repo that kept the TAILOR.md CI gate gets a warning, not a FAIL; removing the gate clears it (A6)" {
@@ -199,6 +198,7 @@ PY2
 
 @test "CRLF frontmatter is read (portable, no GNU sed escape) (B10)" {
   tailor
+  extras_on profiles
   scripts/set-models.sh lite >/dev/null
   sed -i.bak 's/^effort: high$/effort: medium/' .claude/agents/writer.md && rm -f .claude/agents/writer.md.bak
   awk '{ printf "%s\r\n", $0 }' .claude/agents/writer.md >w && mv w .claude/agents/writer.md
@@ -210,4 +210,27 @@ PY2
   tailor
   run env CLAUDE_CODE_USE_BEDROCK=1 bash scripts/doctor.sh
   assert_output --partial "warn: CLAUDE_CODE_USE_BEDROCK is set"
+}
+
+@test "warns when the reviewer runs on the writer's model; the shipped agents and every profile do not (addendum 3)" {
+  tailor
+  run bash scripts/doctor.sh
+  refute_output --partial "reviewer and writer both use model"
+  extras_on profiles
+  for p in lite standard max; do
+    scripts/set-models.sh "$p" >/dev/null
+    run bash scripts/doctor.sh
+    refute_output --partial "reviewer and writer both use model"
+  done
+  sed -i.bak 's/^model: .*/model: opus/' .claude/agents/writer.md .claude/agents/reviewer.md && rm -f .claude/agents/*.bak
+  run bash scripts/doctor.sh
+  assert_success
+  assert_output --partial "warn: reviewer and writer both use model: opus: the reviewer runs on the writer's model; it reviews its own family's code"
+}
+
+@test "a missing effort: line is warned about and the message names both fixes (item C)" {
+  tailor
+  sed -i.bak '/^effort:/d' .claude/agents/security-auditor.md && rm -f .claude/agents/*.bak
+  run scripts/check.sh doctor
+  assert_output --partial "warn: security-auditor has no effort: add an \`effort:\` line to its frontmatter (or, with the profiles extra on, run \`scripts/set-models.sh <profile>\` if the seats are untailored)"
 }

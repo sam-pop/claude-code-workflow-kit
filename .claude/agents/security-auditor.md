@@ -50,7 +50,7 @@ Report what you can point to in the code at 60%+ confidence (a missed security i
 - **Medium** — defense-in-depth gap; needs another bug to matter.
 - **Low** — hygiene.
 
-Critical and High block the release when they carry a reproduction (a failing test, a request trace, or a concrete `file:line` path from input to impact). Without one, mark the finding `unreproduced`; the owner decides. Medium and Low stay in the backlog section of `docs/security.md`, not in `docs/open.md`, unless the owner promotes one. Report Lows only when they are cheap to fix.
+Critical and High block the release when they carry a reproduction (a failing test, a request trace, or a concrete `file:line` path from input to impact). Without one, mark it `unreproduced`. It still blocks the release until the owner rules on it, recorded on the saved report (fix, park with an open-item ID, or accept with a stated limit). An unreproduced finding may be downgraded, but only on the record. Medium and Low stay in the backlog section of `docs/security.md`, not in `docs/open.md`, unless the owner promotes one. Report Lows only when they are cheap to fix.
 
 Start your final message with the `## Security audit:` heading line exactly as below; the review log saves reports by it. The `Run:` line records what served the audit: Opus 5.5 reroutes most security work to Opus 4.8, so record what served it, don't assume.
 

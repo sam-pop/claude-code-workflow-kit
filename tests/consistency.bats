@@ -18,10 +18,10 @@ shell_files() { git ls-files -co --exclude-standard -- '*.sh' '*.bash' '*.bats' 
   assert_output 1
 }
 
-@test "the minimum Claude Code version is the same in README and doctor.sh" {
-  v=$(grep -oE 'older than [0-9]+\.[0-9]+\.[0-9]+' template/scripts/doctor.sh | head -1 | awk '{print $3}')
+@test "the minimum Claude Code version is the same in README and set-models.sh" {
+  v=$(grep -oE 'older than [0-9]+\.[0-9]+\.[0-9]+' template/.claude/optional/set-models.sh | head -1 | awk '{print $3}')
   [[ -n "$v" ]]
-  grep -q "(2, 1, 292)" template/scripts/doctor.sh
+  grep -q "(2, 1, 292)" template/.claude/optional/set-models.sh
   [[ "$v" == 2.1.292 ]]
   grep -q "v$v or later" README.md
   grep -q "Claude%20Code-v$v" README.md
@@ -29,9 +29,9 @@ shell_files() { git ls-files -co --exclude-standard -- '*.sh' '*.bash' '*.bats' 
 
 @test "README profile table matches the profiles in set-models.sh" {
   for p in lite standard max; do
-    want=$(awk -v p="  $p)" '$0 == p {on=1; next} on && /;;/ {exit} on' template/scripts/set-models.sh \
-      | grep -oE '(planner|writer|reviewer|auditor)=[a-z]+/[a-z]+' | cut -d= -f2 | tr '\n' ' ' | sed 's/ $//')
+    want=$(grep -E "^    $p\) echo \"" template/.claude/optional/set-models.sh | sed 's/.*echo "//; s/".*//')
     row=$(grep -E "^\| \*\*$p\*\*" README.md | head -1 | cut -d'|' -f3-6 | tr '[:upper:]' '[:lower:]' | sed 's/ \/ /\//g; s/|/ /g' | tr -s ' ' | sed 's/^ //; s/ $//')
+    [[ -n "$want" ]]
     assert_equal "$row" "$want"
   done
 }
@@ -41,7 +41,7 @@ shell_files() { git ls-files -co --exclude-standard -- '*.sh' '*.bash' '*.bats' 
 }
 
 @test "scripts are executable in the working tree and in the index" {
-  for f in template/scripts/*.sh scripts/install.sh scripts/tools.sh tests/stubs/*; do
+  for f in template/scripts/*.sh template/.claude/optional/*.sh scripts/install.sh scripts/tools.sh tests/stubs/*; do
     [[ -x "$f" ]] || fail "$f is not executable"
     mode=$(git ls-files -s -- "$f" | awk '{print $1}')
     [[ -z "$mode" || "$mode" == 100755 ]] || fail "$f has mode $mode in the index"
@@ -87,6 +87,29 @@ PY
   assert_output ""
 }
 
+@test "no GNU-only alternation (\| in a basic regex) in grep or sed: BSD tools on macOS read it literally" {
+  run python3 - <<'PY'
+import re, subprocess
+files = subprocess.run(["git", "ls-files", "-co", "--exclude-standard", "--", "*.sh", "*.bash", "*.bats",
+                        "tests/stubs/*"], capture_output=True, text=True).stdout.split()
+# grep or sed run without -E/-r whose single-quoted pattern holds \|
+cmd = re.compile(r"\b(grep|sed)\b([^'|;]*)'([^']*)'")
+for f in files:
+    try:
+        lines = open(f, encoding="utf-8").read().split("\n")
+    except FileNotFoundError:
+        continue
+    for n, line in enumerate(lines, 1):
+        if re.match(r"\s*#", line):
+            continue
+        for m in cmd.finditer(line):
+            flags, pattern = m.group(2), m.group(3)
+            if "\\|" in pattern and not re.search(r"\s-[A-Za-z]*[Er]", flags):
+                print(f"{f}:{n}: {line.strip()}")
+PY
+  assert_output ""
+}
+
 @test "every shell file starts with a bash or bats shebang" {
   while IFS= read -r f; do
     head -1 "$f" | grep -qE '^#!/usr/bin/env (bash|bats)$' || fail "$f: $(head -1 "$f")"
@@ -107,9 +130,27 @@ PY
 }
 
 @test "every path kit 1.4 installed is still under template/ (no surprise retirements)" {
+  # A 1.4 path is a template/ file, the active path of an extra's file, or retired on purpose.
+  retired=" handoff.md docs/glossary.md "
   while IFS= read -r p; do
-    [[ -f "template/$p" ]] || fail "template/$p is missing (installed by 1.4)"
+    [[ -f "template/$p" ]] && continue
+    case "$p" in
+      scripts/*.sh) [[ -f "template/.claude/optional/${p#scripts/}" ]] && continue ;;
+      .claude/agents/*.md) [[ -f "template/.claude/optional/${p#.claude/agents/}" ]] && continue ;;
+    esac
+    [[ "$retired" == *" $p "* ]] && continue
+    fail "template/$p is missing (installed by 1.4)"
   done <tests/fixtures/kit-1.4-files.txt
+}
+
+@test "every extra's file in extras.sh exists in template/.claude/optional/, and nothing else is there" {
+  listed=$(sed -n '/^files_of() {/,/^}/p' template/scripts/extras.sh | grep -oE '[a-z-]+\.(sh|md)' | sort)
+  [[ -n "$listed" ]]
+  assert_equal "$(cd template/.claude/optional && find . -type f | sed 's#^\./##' | sort)" "$listed"
+  names=$(sed -n 's/^EXTRAS="\(.*\)"$/\1/p' template/scripts/extras.sh)
+  for x in $names; do
+    sed -n '/^files_of() {/,/^}/p' template/scripts/extras.sh | grep -qE "^ +$x\)" || fail "$x has no files"
+  done
 }
 
 @test "the root dogfood install has not drifted from template/" {
@@ -123,6 +164,37 @@ PY
       *) fail "unexpected: $line" ;;
     esac
   done <<<"$output"
+}
+
+@test "every extra name in extras.sh appears in README, HOW-TO-USE.md and rollout.md" {
+  names=$(sed -n 's/^EXTRAS="\(.*\)"$/\1/p' template/scripts/extras.sh)
+  [[ -n "$names" ]]
+  for x in $names; do
+    for f in README.md template/HOW-TO-USE.md template/docs/rollout.md; do
+      grep -q "\`$x\`" "$f" || fail "$f does not name the $x extra"
+    done
+    grep -q "^### $x$" template/docs/rollout.md || fail "rollout.md has no ### $x section"
+  done
+}
+
+@test "template/CLAUDE.md Workflow names scripts/extras.sh and authorises the Agent effort parameter, never model" {
+  w=$(sed -n '/^## Workflow/,/^## Recording/p' template/CLAUDE.md)
+  grep -q 'scripts/extras.sh status' <<<"$w"
+  grep -q "Agent tool's \`effort\` parameter" <<<"$w"
+  grep -q 'never `model`' <<<"$w"
+  (($(wc -l <<<"$w") <= 16))
+}
+
+@test "README intro paragraphs match the committed fixture (the owner's wording stays as written)" {
+  run sed -n '/^Claude Kit is a set/,/^It.s for anyone/p' README.md
+  assert_output "$(cat tests/fixtures/readme-intro.md)"
+  # The order is: hero, ---, intro, TL;DR, ---, Contents.
+  run grep -nE '^---$|^## TL;DR|^## Contents|^Claude Kit is a set' README.md # -E: BSD grep has no \| in basic regex
+  assert_line --index 0 --regexp '^[0-9]+:---$'
+  assert_line --index 1 --regexp ':Claude Kit is a set'
+  assert_line --index 2 --regexp ':## TL;DR'
+  assert_line --index 3 --regexp ':---$'
+  assert_line --index 4 --regexp ':## Contents'
 }
 
 @test "template/ holds no maintainer content" {

@@ -10,7 +10,15 @@ export LC_ALL=C
 load "$REPO_ROOT/node_modules/bats-support/load"
 load "$REPO_ROOT/node_modules/bats-assert/load"
 
+# Variables that make git work on another repository (set when the suite runs from a git hook or by
+# hand): what `git rev-parse --local-env-vars` lists, computed once, with a fixed list as the fallback.
+GIT_LOCAL_VARS="$(git rev-parse --local-env-vars 2>/dev/null)"
+[[ -n "$GIT_LOCAL_VARS" ]] || GIT_LOCAL_VARS="GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT GIT_OBJECT_DIRECTORY GIT_DIR GIT_WORK_TREE GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_INDEX_FILE GIT_NO_REPLACE_OBJECTS GIT_REPLACE_REF_BASE GIT_PREFIX GIT_SHALLOW_FILE GIT_COMMON_DIR"
+GIT_LOCAL_VARS="$GIT_LOCAL_VARS GIT_NAMESPACE"
+
 isolate() {
+  # shellcheck disable=SC2086  # the list splits on whitespace on purpose
+  unset $GIT_LOCAL_VARS
   export HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$HOME"
   export GIT_CONFIG_GLOBAL="$HOME/.gitconfig"
@@ -25,7 +33,7 @@ isolate() {
   git config --global protocol.file.allow always
   git config --global commit.gpgsign false
   unset CLAUDE_CODE_EFFORT_LEVEL CLAUDE_CODE_SUBAGENT_MODEL_FORCE GITLEAKS_CONFIG GITLEAKS_CONFIG_TOML \
-    CLAUDE_PROJECT_DIR BASE_BRANCH DOCTOR_SKIP_PATHS
+    CLAUDE_PROJECT_DIR BASE_BRANCH DOCTOR_SKIP_PATHS KIT_STUCK_INNER KIT_EXTRAS_REPO
   STUB_LOG="$BATS_TEST_TMPDIR/stub-log"
   mkdir -p "$STUB_LOG"
   export STUB_LOG
@@ -121,4 +129,11 @@ fake_token() {
 with_tools() {
   [[ -d "$REPO_ROOT/.tools/bin" ]] && export PATH="$REPO_ROOT/.tools/bin:$PATH"
   return 0
+}
+
+# Switch extras on in the repo in the current directory and commit, as a repo that uses them would.
+extras_on() {
+  local x
+  for x in "$@"; do bash scripts/extras.sh on "$x" >/dev/null || return 1; done
+  git add -A && git commit -qm "extras on: $*"
 }

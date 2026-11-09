@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
-# template/scripts/check-stamp.sh: the tree fingerprint, the stamp, and the Stop hook's silence rules.
+# template/.claude/optional/check-stamp.sh (stop-warning extra): the file-list id, the pending and
+# passed stamps, and the Stop hook's warnings and silence rules.
 
 # shellcheck disable=SC2153  # KIT and TARGET are set by helpers.bash
 # shellcheck disable=SC2016  # sed scripts hold literal $ expressions
@@ -9,6 +10,7 @@ setup() {
   isolate
   installed_target
   cd "$TARGET" || exit 1
+  extras_on stop-warning
   tailor_check
 }
 
@@ -21,14 +23,15 @@ tailor_check() {
 
 hook() { echo '{"stop_hook_active": false}' | scripts/check-stamp.sh hook; }
 record_now() { scripts/check-stamp.sh record "$(scripts/check-stamp.sh tree)"; }
-stamp_file() { git rev-parse --git-path kit/check-passed; }
+stamp_file() { git rev-parse --git-path kit/check-passed.json; }
+objects() { find "$(git rev-parse --git-path objects)" -type f | sort; }
 
 @test "tree is the same before and after a commit of the same content" {
   echo change >>README.md
   before=$(scripts/check-stamp.sh tree)
   git add -A && git commit -qm c
   assert_equal "$(scripts/check-stamp.sh tree)" "$before"
-  assert_equal "$(git rev-parse 'HEAD^{tree}')" "$before"
+  [[ "$before" =~ ^[0-9a-f]{64}$ ]]
 }
 
 @test "tree leaves out docs/reviews/ and git-ignored files, but counts untracked files" {
@@ -44,9 +47,55 @@ stamp_file() { git rev-parse --git-path kit/check-passed; }
 
 @test "tree does not touch the real index" {
   echo new >new.txt
+  echo change >>README.md
+  cp "$(git rev-parse --git-path index)" "$BATS_TEST_TMPDIR/index"
   scripts/check-stamp.sh tree >/dev/null
+  cmp "$(git rev-parse --git-path index)" "$BATS_TEST_TMPDIR/index"
   run git status --porcelain
-  assert_output "?? new.txt"
+  assert_output " M README.md
+?? new.txt"
+}
+
+@test "tree writes no object into .git/objects, for a small or a 2 MiB untracked file (1.5 wrote both)" {
+  before=$(objects)
+  echo small >small.txt
+  head -c 2097152 /dev/zero | tr '\0' x >big.bin
+  echo change >>README.md
+  scripts/check-stamp.sh tree >/dev/null
+  echo '{}' | scripts/check-stamp.sh hook >/dev/null
+  assert_equal "$(objects)" "$before"
+}
+
+@test "an untracked file over 1 MiB is left out of the id; one at 1 MiB counts" {
+  base=$(scripts/check-stamp.sh tree)
+  head -c 1048577 /dev/zero >big.bin
+  assert_equal "$(scripts/check-stamp.sh tree)" "$base"
+  head -c 1048576 /dev/zero >edge.bin
+  [[ "$(scripts/check-stamp.sh tree)" != "$base" ]]
+}
+
+@test "a staged or committed docs/reviews/ file is left out" {
+  base=$(scripts/check-stamp.sh tree)
+  mkdir -p docs/reviews && echo r >docs/reviews/x.md
+  git add docs/reviews/x.md
+  assert_equal "$(scripts/check-stamp.sh tree)" "$base"
+  git commit -qm review
+  assert_equal "$(scripts/check-stamp.sh tree)" "$base"
+}
+
+@test "a deleted file, a mode change and a symlink each change the id" {
+  base=$(scripts/check-stamp.sh tree)
+  chmod +x README.md
+  m=$(scripts/check-stamp.sh tree)
+  [[ "$m" != "$base" ]]
+  chmod -x README.md
+  ln -s README.md link
+  l=$(scripts/check-stamp.sh tree)
+  [[ "$l" != "$base" && "$l" != "$m" ]]
+  rm link
+  assert_equal "$(scripts/check-stamp.sh tree)" "$base"
+  rm docs/rollout.md
+  [[ "$(scripts/check-stamp.sh tree)" != "$base" ]]
 }
 
 @test "silent: a clean tree with no stamp" {
@@ -112,10 +161,53 @@ stamp_file() { git rev-parse --git-path kit/check-passed; }
 @test "warns naming the file edited after a passing run" {
   echo change >>README.md
   record_now
-  echo more >>docs/glossary.md
+  echo more >>docs/rollout.md
   run hook
   assert_success
-  assert_output "{\"systemMessage\": \"scripts/check.sh all has not passed since these changes (1 file: 'docs/glossary.md'; see git status --short)\"}"
+  assert_output "{\"systemMessage\": \"scripts/check.sh all has not passed since these changes (1 file: 'docs/rollout.md'; see git status --short)\"}"
+}
+
+@test "warns after committing changes the checks never passed on (1.5 went silent at HEAD)" {
+  record_now
+  echo unchecked >>README.md
+  git add -A && git commit -qm unchecked
+  [[ -z "$(git status --porcelain)" ]]
+  run hook
+  assert_success
+  assert_output --partial "has not passed since these changes (1 file: 'README.md'"
+}
+
+@test "a 1.5 check-passed stamp is ignored, and the next record deletes it" {
+  p=$(git rev-parse --git-path kit/check-passed)
+  mkdir -p "$(dirname "$p")"
+  echo "$(git rev-parse 'HEAD^{tree}') 2026-01-01T00:00:00Z" >"$p"
+  echo change >>README.md
+  run hook
+  assert_output --partial "no passing run recorded"
+  record_now
+  [[ ! -e "$p" && -f "$(stamp_file)" ]]
+  run hook
+  assert_output ""
+}
+
+@test "record with an id other than the pending one records nothing" {
+  t=$(scripts/check-stamp.sh tree)
+  echo change >>README.md
+  t2=$(scripts/check-stamp.sh tree)
+  run scripts/check-stamp.sh record "$t"
+  assert_failure 1
+  assert_output --partial "nothing recorded"
+  [[ ! -e "$(stamp_file)" ]]
+  run scripts/check-stamp.sh record "$t2"
+  assert_success
+  [[ -f "$(stamp_file)" ]]
+}
+
+@test "the stamp holds paths and blob ids, never file contents" {
+  printf 'SECRET_VALUE_%s\n' "$(fake_token)" >notes.txt
+  record_now
+  run grep -c SECRET_VALUE "$(stamp_file)" "$(git rev-parse --git-path kit/check-pending.json)"
+  refute_output --regexp ':[1-9]'
 }
 
 @test "warns with no stamp on a dirty tree, with the count and at most 3 names" {
@@ -146,7 +238,7 @@ stamp_file() { git rev-parse --git-path kit/check-passed; }
   echo change >>README.md
   record_now
   git worktree add -q "$BATS_TEST_TMPDIR/wt" -b other HEAD 2>/dev/null
-  [[ "$(cd "$BATS_TEST_TMPDIR/wt" && git rev-parse --git-path kit/check-passed)" != "$(stamp_file)" ]]
+  [[ "$(cd "$BATS_TEST_TMPDIR/wt" && git rev-parse --git-path kit/check-passed.json)" != "$(stamp_file)" ]]
   cd "$BATS_TEST_TMPDIR/wt"
   echo x >>README.md
   run bash -c 'echo "{}" | scripts/check-stamp.sh hook'
@@ -156,7 +248,8 @@ stamp_file() { git rev-parse --git-path kit/check-passed; }
 @test "check.sh all records the stamp on a pass and not on a failure" {
   use_stub claude
   # The rest of the install tailored too, and security reduced to a pass/fail switch.
-  for f in CLAUDE.md handoff.md docs/*.md .claude/agents/*.md; do
+  for f in CLAUDE.md docs/*.md .claude/agents/*.md; do
+    [[ -f "$f" ]] || continue
     sed -i.bak -e 's/{{[^}]*}}/x/g' -e '/<!-- kit:/d' "$f" && rm -f "$f.bak"
   done
   python3 - <<'PY'
@@ -173,15 +266,32 @@ PY
   run scripts/check.sh all
   assert_success
   assert_output --partial "== all: PASS"
-  read -r t _ <"$(stamp_file)"
+  t=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["id"])' "$(stamp_file)")
   assert_equal "$t" "$(scripts/check-stamp.sh tree)"
   run hook
   assert_output ""
 }
 
-@test "record refuses something that is not a tree id" {
+@test "record refuses something that is not an id" {
   run scripts/check-stamp.sh record "not-a-tree"
+  assert_failure 1
+  run scripts/check-stamp.sh record "$(git rev-parse 'HEAD^{tree}')"
   assert_failure 1
   run scripts/check-stamp.sh
   assert_failure 2
+}
+
+@test "an unreadable changed file does not make tree fail: it counts as changed and the id moves when it does (item 11)" {
+  [[ "$(id -u)" != 0 ]] || skip "root reads any file; run the suite as a normal user"
+  base=$(scripts/check-stamp.sh tree)
+  echo secret >locked.txt && chmod 000 locked.txt
+  run scripts/check-stamp.sh tree
+  assert_success
+  [[ "$output" =~ ^[0-9a-f]{64}$ ]]
+  [[ "$output" != "$base" ]]
+  first=$output
+  chmod 600 locked.txt && echo more >>locked.txt && chmod 000 locked.txt
+  run scripts/check-stamp.sh tree
+  assert_success
+  [[ "$output" != "$first" ]]
 }

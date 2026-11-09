@@ -9,10 +9,11 @@ Status: ADOPTED. This is the one file the planner, writer and reviewer cite. Eve
 - Hooks in `.claude/settings.json` call scripts in `scripts/`; the logic lives in the script, never inline in the JSON.
 - A script finds the repo by its own location (`cd "$(dirname "$0")/.."`) or by `CLAUDE_PROJECT_DIR` for hooks, never by the caller's working directory.
 - `scripts/install.sh` never writes inside the kit: it works from a read-only copy or one without `.git`.
+- An extra is its files: dormant in `.claude/optional/`, active in `.claude/agents/` or `scripts/`. Core scripts call an extra's script only when it is active, and `scripts/extras.sh` is the one way to switch.
 
 ## Configuration
 
-- Scripts read environment variables only where their header documents them (`BASE_BRANCH`, `DOCTOR_SKIP_PATHS`, `CLAUDE_PROJECT_DIR`). No secrets anywhere in the kit.
+- Scripts read environment variables only where their header documents them (`BASE_BRANCH`, `DOCTOR_SKIP_PATHS`, `KIT_EXTRAS_REPO`, `KIT_STUCK_INNER`, `CLAUDE_PROJECT_DIR` for hooks). No secrets anywhere in the kit.
 
 ## Errors
 
@@ -22,8 +23,8 @@ Status: ADOPTED. This is the one file the planner, writer and reviewer cite. Eve
 
 ## Data
 
-- `.claude/kit-version` (`version=… commit=… installed=…`), `.claude/kit-manifest` (`<sha256>  <path>` per installed file) and the set of paths under `template/` are compatibility contracts with every repo installed since 1.4. A path removed from `template/` shows as `retired` in those repos; a renamed one needs an `ALIAS` in `install.sh`.
-- Tracked files hold no maintainer working state: `handoff.md` and saved reports (`docs/reviews/*-*.md`) are git-ignored at the root.
+- `.claude/kit-version` (`version=… commit=… installed=…`), `.claude/kit-manifest` (`<sha256>  <path>` per installed file) and the set of paths under `template/` are compatibility contracts with every repo installed since 1.4. A path removed from `template/` shows as `retired` in those repos; a renamed one needs handling in `install.sh` (a file moved into an extra is matched through `active_path`).
+- Tracked files hold no maintainer working state: saved reports (`docs/reviews/*-*.md`) are git-ignored at the root.
 
 ## Naming and files
 
@@ -64,6 +65,7 @@ Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh
 | bash-4 syntax (`mapfile`, `declare -A`, `local -n`, `${x,,}`, `[[ -v`, `\|&`, `coproc`) | mechanical: `test` (`tests/consistency.bats`) |
 | Root copy drifting from `template/` | mechanical: `test` (`tests/consistency.bats`) |
 | Maintainer content inside `template/` | mechanical: `test` (`tests/consistency.bats`) |
+| Core keeping state with every extra off | mechanical: `test` (`tests/stuck-detect.bats`) |
 | Bug fix without a regression test | judgment |
 | A hook that can block or print noise on its own failure | judgment |
 | A new runtime dependency in `template/` (anything beyond bash, git, python3 stdlib) | judgment |
@@ -79,4 +81,3 @@ Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh
 - No row of the Anti-patterns table is violated.
 - Any new third-party dependency was called out for approval before being added.
 - Any open item touched is still open, or the owner closed it and `docs/decisions.md` records it.
-- `handoff.md` is rewritten if the session is ending.

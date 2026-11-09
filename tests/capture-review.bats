@@ -8,6 +8,7 @@ setup() {
   isolate
   installed_target
   cd "$TARGET" || exit 1
+  extras_on verify-review
 }
 
 stop_json() { python3 -c 'import json,sys; print(json.dumps({"last_assistant_message": sys.argv[1]}))' "$1"; }
@@ -74,6 +75,16 @@ on_branch_with_readme_change() {
   grep -q '^quotes: 1 verified, 0 unverified, 0 unquoted$' "$f"
 }
 
+@test "verify-review off: the review is saved with no Verification block and no message" {
+  on_branch_with_readme_change
+  bash scripts/extras.sh off verify-review >/dev/null
+  run bash -c "$(declare -f stop_json good_review); stop_json \"\$(good_review '# made-up text')\" | scripts/capture-review.sh stop"
+  assert_success
+  assert_output ""
+  run grep -c Verification "$(saved)"
+  assert_output 0
+}
+
 @test "a review with a made-up quote gets a Verification block and a systemMessage" {
   on_branch_with_readme_change
   run bash -c "$(declare -f stop_json good_review); stop_json \"\$(good_review 'code that is not there')\" | scripts/capture-review.sh stop"
@@ -114,4 +125,12 @@ on_branch_with_readme_change() {
   run bash -c "$(declare -f stop_json good_review); stop_json \"\$(good_review '# changed title')\" | scripts/capture-review.sh stop"
   assert_output --partial "coverage: 2 changed files, 1 not in ### Coverage (named in the report)"
   refute_output --partial "curl"
+}
+
+@test "a Codex plan review is saved as -codex-plan.md and never verified (addendum 4)" {
+  stop_json $'## Codex plan review: docs/plans/x.md — gpt-6.1-sol/high\n\n### Summary\nok' | scripts/capture-review.sh stop
+  run saved
+  assert_output --regexp -- '-codex-plan\.md$'
+  run grep -c Verification "$(saved)"
+  assert_output 0
 }

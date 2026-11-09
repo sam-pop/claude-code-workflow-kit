@@ -74,4 +74,3 @@ Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh
 - No row of the Anti-patterns table is violated.
 - Any new third-party dependency was called out for approval before being added.
 - Any open item touched is still open, or the owner closed it and `docs/decisions.md` records it.
-- `handoff.md` is rewritten if the session is ending.

@@ -73,7 +73,7 @@ missing = [s for s in need if s not in sections]
 
 # Base and changed files.
 mb = None
-for ref in (base, "origin/" + base):
+for ref in ("origin/" + base, base):  # the remote-tracking copy first: a local branch may be stale
     if git("rev-parse", "--verify", "--quiet", ref + "^{commit}") is not None:
         out = git("merge-base", ref, "HEAD")
         if out:
@@ -102,7 +102,7 @@ def resolve(path):
     if os.path.isfile(path):
         return path
     cands = [c for c in (changed or []) if c == path or c.endswith("/" + path)]
-    return cands[0] if len(cands) == 1 else None
+    return cands[0] if len(cands) == 1 and inside(cands[0]) else None
 
 
 def in_order(frags, hay):

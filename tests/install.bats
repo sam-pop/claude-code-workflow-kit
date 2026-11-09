@@ -123,19 +123,19 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
 
 @test "upgrade: new, skipped, never re-added and retired are classified and nothing is deleted" {
   installed_target
-  rm "$TARGET/docs/glossary.md" "$TARGET/TAILOR.md"
+  rm "$TARGET/docs/rollout.md" "$TARGET/TAILOR.md"
   mk_kit2
   echo "# brand new" >"$KIT2/template/docs/new-file.md"
-  git -C "$KIT2" rm -q template/docs/rollout.md
+  git -C "$KIT2" rm -q template/docs/decisions.md
   commit_kit2
   run "$KIT2/scripts/install.sh" --upgrade "$TARGET"
   assert_success
   assert_line --regexp '^new: +docs/new-file.md$'
-  assert_line --regexp '^skipped: +docs/glossary.md +\(you deleted it\)$'
+  assert_line --regexp '^skipped: +docs/rollout.md +\(you deleted it\)$'
   assert_line --regexp '^never re-added: +TAILOR.md$'
-  assert_line --regexp '^retired: +docs/rollout.md +\(no longer in the kit; not deleted\)$'
-  [[ -f "$TARGET/docs/new-file.md" && -f "$TARGET/docs/rollout.md" ]]
-  [[ ! -e "$TARGET/docs/glossary.md" && ! -e "$TARGET/TAILOR.md" ]]
+  assert_line --regexp '^retired: +docs/decisions.md +\(no longer in the kit; not deleted\)$'
+  [[ -f "$TARGET/docs/new-file.md" && -f "$TARGET/docs/decisions.md" ]]
+  [[ ! -e "$TARGET/docs/rollout.md" && ! -e "$TARGET/TAILOR.md" ]]
   assert_line --partial "retired 1"
 }
 
@@ -187,7 +187,7 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   assert_success
 }
 
-@test "upgrade of a repo installed from kit 1.4: retired 0, codex-reviewer found under agents/" {
+@test "upgrade of a repo installed from kit 1.4: only handoff.md and docs/glossary.md retired, codex stays on, profiles and metrics on, the rest off" {
   git -C "$REPO_ROOT" cat-file -e "0823256^{commit}" 2>/dev/null || skip "kit 1.4 commit 0823256 not in this clone"
   k14="$BATS_TEST_TMPDIR/kit14"
   mkdir -p "$k14"
@@ -201,13 +201,181 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   git -C "$TARGET" add -A && git -C "$TARGET" commit -qm k14
   run "$KIT/scripts/install.sh" --upgrade "$TARGET"
   assert_success
-  assert_line --partial "retired 0"
+  assert_line --partial "retired 2"
+  assert_line --regexp '^retired: +handoff\.md '
+  assert_line --regexp '^retired: +docs/glossary\.md '
+  [[ "$(grep -c '^retired:' <<<"$output")" == 2 ]]
   refute_line --regexp '^new: +\.claude/optional/codex-reviewer.md'
-  # 1.5 adds exactly these three files.
+  # 1.5 and 1.6 add exactly these files: stop-warning and verify-review arrive off, metrics on.
   assert_equal "$(grep -E '^new: ' <<<"$output" | awk '{print $2}' | sort | tr '\n' ' ')" \
-    ".github/dependabot.yml scripts/check-stamp.sh scripts/verify-review.sh "
+    ".claude/optional/check-stamp.sh .claude/optional/stuck-detect.sh .claude/optional/verify-review.sh .github/dependabot.yml scripts/extras.sh scripts/review-stats.sh "
+  # profiles is on, so sync moves its new stuck detector next to set-models.sh
+  assert_line "moved: .claude/optional/stuck-detect.sh -> scripts/stuck-detect.sh"
+  assert_line --regexp '^(current|replaced): +scripts/set-models\.sh$'
   assert_line --regexp '\.claude/agents/codex-reviewer\.md'
   [[ ! -e "$TARGET/.claude/optional/codex-reviewer.md" ]]
+  use_stub codex
+  run bash "$TARGET/scripts/extras.sh" status
+  assert_success
+  assert_output "codex: on
+profiles: on
+stop-warning: off
+verify-review: off
+metrics: on"
+}
+
+# A repo installed from kit 1.5 (tag v1.5 = 85094b7), committed, without tailoring.
+installed_from_15() {
+  local ref
+  for ref in v1.5 85094b7; do
+    git -C "$REPO_ROOT" cat-file -e "$ref^{commit}" 2>/dev/null && break
+    ref=""
+  done
+  [[ -n "$ref" ]] || skip "kit 1.5 (tag v1.5 or commit 85094b7) not in this clone"
+  k15="$BATS_TEST_TMPDIR/kit15"
+  mkdir -p "$k15"
+  git -C "$REPO_ROOT" archive "$ref" | tar -x -C "$k15"
+  (cd "$k15" && git init -q && git add -A && git commit -qm k15)
+  mk_target
+  "$k15/scripts/install.sh" "$TARGET" >/dev/null
+  git -C "$TARGET" add -A && git -C "$TARGET" commit -qm k15
+}
+
+@test "upgrade from kit 1.5: every extra it ran stays on, the Stop hook stays, status is clean, only handoff.md and docs/glossary.md retired" {
+  use_stub codex
+  installed_from_15
+  cp "$TARGET/.claude/settings.json" "$BATS_TEST_TMPDIR/settings15"
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  assert_line --partial "retired 2"
+  assert_line --regexp '^retired: +handoff\.md '
+  assert_line --regexp '^retired: +docs/glossary\.md '
+  [[ "$(grep -c '^retired:' <<<"$output")" == 2 ]]
+  assert_line --regexp '^replaced: +\.claude/settings\.json$'
+  assert_line --partial "hook added: Stop"
+  assert_line --regexp '^new: +scripts/review-stats\.sh$'
+  assert_line "moved: .claude/optional/stuck-detect.sh -> scripts/stuck-detect.sh"
+  [[ -x "$TARGET/scripts/stuck-detect.sh" ]]
+  for f in check-stamp.sh verify-review.sh set-models.sh; do
+    assert_line --regexp "^(current|replaced): +scripts/$f\$"
+    [[ -x "$TARGET/scripts/$f" && ! -e "$TARGET/.claude/optional/$f" ]] || fail "$f not on"
+  done
+  # the untailored settings.json the upgrade replaced gets its Stop hook back, byte for byte
+  cmp "$TARGET/.claude/settings.json" "$BATS_TEST_TMPDIR/settings15"
+  run bash "$TARGET/scripts/extras.sh" status
+  assert_success
+  assert_output "codex: off
+profiles: on
+stop-warning: on
+verify-review: on
+metrics: on"
+  # the manifest keys extras by their .claude/optional/ path
+  run grep -cE '  (scripts|\.claude/agents)/(check-stamp|verify-review|set-models|review-stats)\.sh$' "$TARGET/.claude/kit-manifest"
+  assert_output 0
+  # nothing changed in the kit since: a second upgrade is all current and syncs nothing
+  git -C "$TARGET" add -A && git -C "$TARGET" commit -qm up
+  rm "$TARGET/.claude/kit-upgrade.md"
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  refute_line --partial "hook added"
+  refute_line --regexp '^(new|replaced|tailored):'
+}
+
+@test "upgrade: an extra that is on is updated in place, with no .kit when unmodified" {
+  installed_target
+  (cd "$TARGET" && extras_on verify-review) >/dev/null
+  mk_kit2
+  echo "# newer" >>"$KIT2/template/.claude/optional/verify-review.sh"
+  commit_kit2
+  run "$KIT2/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  assert_line --regexp '^replaced: +scripts/verify-review\.sh$'
+  cmp "$TARGET/scripts/verify-review.sh" "$KIT2/template/.claude/optional/verify-review.sh"
+  [[ ! -e "$TARGET/.claude/optional/verify-review.sh" && ! -e "$TARGET/scripts/verify-review.sh.kit" ]]
+  grep -q '  \.claude/optional/verify-review\.sh$' "$TARGET/.claude/kit-manifest"
+}
+
+@test "upgrade: a tailored extra that is on gets its .kit beside the active file" {
+  installed_target
+  (cd "$TARGET" && extras_on verify-review) >/dev/null
+  echo "# mine" >>"$TARGET/scripts/verify-review.sh"
+  mk_kit2
+  echo "# newer" >>"$KIT2/template/.claude/optional/verify-review.sh"
+  commit_kit2
+  run "$KIT2/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  assert_line --regexp '^tailored: +scripts/verify-review\.sh '
+  [[ -f "$TARGET/scripts/verify-review.sh.kit" && ! -e "$TARGET/.claude/optional/verify-review.sh" ]]
+}
+
+@test "upgrade: an extra the repo switched off stays off" {
+  installed_target
+  (cd "$TARGET" && extras_on stop-warning metrics) >/dev/null
+  (cd "$TARGET" && bash scripts/extras.sh off stop-warning && bash scripts/extras.sh off metrics && git add -A && git commit -qm off) >/dev/null
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  [[ -f "$TARGET/.claude/optional/check-stamp.sh" && ! -e "$TARGET/scripts/check-stamp.sh" ]]
+  [[ -f "$TARGET/.claude/optional/review-stats.sh" && ! -e "$TARGET/scripts/review-stats.sh" ]]
+  run grep -c '"Stop"' "$TARGET/.claude/settings.json"
+  assert_output 0
+}
+
+@test "upgrade: an extra's file the repo deleted is skipped, not re-added off (active or dormant)" {
+  installed_target
+  (cd "$TARGET" && extras_on verify-review) >/dev/null
+  rm "$TARGET/scripts/verify-review.sh" "$TARGET/.claude/optional/review-stats.sh"
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  assert_line --regexp '^skipped: +\.claude/optional/verify-review\.sh +\(you deleted it\)$'
+  assert_line --regexp '^skipped: +\.claude/optional/review-stats\.sh +\(you deleted it\)$'
+  [[ ! -e "$TARGET/.claude/optional/verify-review.sh" && ! -e "$TARGET/scripts/verify-review.sh" ]]
+  [[ ! -e "$TARGET/scripts/review-stats.sh" ]]
+}
+
+@test "upgrade: a 1.5 manifest whose active extra file was deleted is skipped, not retired" {
+  installed_from_15
+  rm "$TARGET/scripts/verify-review.sh"
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  assert_line --regexp '^skipped: +\.claude/optional/verify-review\.sh'
+  refute_line --regexp '^retired: +scripts/verify-review\.sh'
+  [[ ! -e "$TARGET/.claude/optional/verify-review.sh" ]]
+}
+
+@test "upgrade: metrics arrives on for a manifest without review-stats.sh, stays off for one that has it off" {
+  installed_target
+  grep -v 'review-stats' "$TARGET/.claude/kit-manifest" >"$BATS_TEST_TMPDIR/m"
+  cp "$BATS_TEST_TMPDIR/m" "$TARGET/.claude/kit-manifest"
+  rm "$TARGET/.claude/optional/review-stats.sh"
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  assert_line --regexp '^new: +scripts/review-stats\.sh$'
+  [[ -x "$TARGET/scripts/review-stats.sh" ]]
+  installed_target other
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  [[ -f "$TARGET/.claude/optional/review-stats.sh" && ! -e "$TARGET/scripts/review-stats.sh" ]]
+}
+
+@test "fresh install leaves a repo's own scripts/set-models.sh alone and installs the extra off" {
+  mk_target
+  mkdir -p "$TARGET/scripts"
+  echo "echo mine" >"$TARGET/scripts/set-models.sh"
+  run "$KIT/scripts/install.sh" "$TARGET"
+  assert_success
+  assert_equal "$(cat "$TARGET/scripts/set-models.sh")" "echo mine"
+  [[ -f "$TARGET/.claude/optional/set-models.sh" && ! -e "$TARGET/scripts/set-models.sh.kit" ]]
+}
+
+@test "upgrade: a sync that cannot edit settings.json warns and still exits 0" {
+  installed_target
+  (cd "$TARGET" && extras_on stop-warning) >/dev/null
+  printf 'not json\n' >"$TARGET/.claude/settings.json"
+  git -C "$TARGET" commit -qam broken
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  assert_output --partial "warn: scripts/extras.sh sync did not finish"
+  assert_equal "$(cat "$TARGET/.claude/settings.json")" "not json"
 }
 
 @test "kit state: an untracked file in template/ is not installed and the installer warns (R2-60)" {

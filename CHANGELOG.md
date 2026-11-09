@@ -2,6 +2,59 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/install.sh` reads the version from the first `## [x.y]` heading below.
 
+## [1.6] — Unreleased
+
+### Added
+
+- Core and extras. A fresh install is the core process; five opt-in extras are off until you switch them on with `scripts/extras.sh on <name>`: `profiles`, `codex`, `stop-warning`, `verify-review`, `metrics`. An extra is its files: dormant in `.claude/optional/`, active at `.claude/agents/<file>.md` or `scripts/<file>.sh`. `scripts/extras.sh status|on|off|sync` moves the files and adds or removes only the kit's own hook entry in `.claude/settings.json`; `status` warns about a half-enabled extra, a hook left behind, Codex without its CLI and `CODEX_API_KEY` in a workflow. Core scripts call an extra's script only when it is active.
+- `scripts/review-stats.sh` (metrics extra): the review-log counts that `check.sh doctor` used to print always.
+- `scripts/stuck-detect.sh` (profiles extra): `scripts/check.sh` prints `same failure N times: <args>` after three identical failures (durations, times and addresses ignored), the writer's first stop rule. State is kept as hashes only; with the extra off `check.sh` keeps no state.
+- `scripts/codex-review.sh plan <file>` (codex extra): Codex reviews the planner's blueprint, sending only the plan text under the same gitleaks scan and tooling checks, before your question round. Saved as `*-codex-plan.md`; the codex-reviewer's Bash guard allows `plan <file>` for a relative `*.md` path inside the repo; the script refuses git-ignored paths and secrets-file names.
+- `check.sh doctor` warns when `reviewer.md` and `writer.md` use the same `model:`.
+- `scripts/set-models.sh` refuses to overwrite a seat that is none of the profiles' values for its role; `--force` overrides.
+- The writer writes each test first and shows it failing, and ends its report with `Not verified:`; the reviewer reads that line.
+- `docs/rollout.md` has a core Risk tiers section and one Extras section per extra.
+- `HOW-TO-USE.md`: an Extras table, and a paragraph on handing work to another agent or person.
+- README: "What makes it different" and "Core and extras".
+
+### Changed
+
+- Profiles now keep the model that wrote the code from reviewing it. lite: sonnet/high planner and writer, opus/medium reviewer, opus/high auditor. standard: opus/high planner, sonnet/high writer, opus/high reviewer, opus/xhigh auditor (the writer was opus/medium). max: opus/high planner, opus/medium writer, fable/high reviewer and auditor (Fable was the planner).
+- The writer ladder raises effort only and never passes Agent `model`: lite and standard go sonnet/high, sonnet/xhigh, stop; max goes opus/medium, opus/high, opus/xhigh, stop. The High risk tier changes only the reviewer's effort. The `CLAUDE.md` Workflow is about ten lines; tiers, ladder and per-extra rules moved to `docs/rollout.md`.
+- `scripts/check-stamp.sh` (stop-warning extra) fingerprints the working tree from `git ls-files -s` and `git status` and hashes changed files itself: nothing is written to `.git/objects` or the index, `docs/reviews/` and untracked files over 1 MiB are left out, and a commit of unchecked changes still warns. The stamp is `kit/check-passed.json` (the 1.5 `kit/check-passed` is ignored and deleted by the next record); the command line is unchanged.
+- `scripts/check-stamp.sh`, `scripts/verify-review.sh` and `scripts/set-models.sh` live in `.claude/optional/` until their extra is on. `scripts/set-models.sh` also warns about Claude Code older than 2.1.292, `effortLevel` in `~/.claude/settings.json` and Fable billing (moved from `doctor`); `--cross` is gone.
+- `check.sh doctor` is shorter: review stats need the metrics extra, and the checks for the stop-warning stamp lines, Codex and `CODEX_API_KEY` are part of `extras.sh status`, which `doctor` shows.
+- `scripts/install.sh` finds an extra's active files through `active_path` (this replaces the codex-reviewer alias), updates them in place, never re-adds one you deleted, and finishes with the kit's `extras.sh sync`.
+- Review reports from the Codex plan review and `*-codex-plan.md` are counted with Codex reports.
+- `codex-review.sh plan <file>` takes only a `*.md` file that is not git-ignored and not a secrets file (`.env`, `*.pem`, `*.p12`, SSH keys); the guard checks the same name rules.
+- `verify-review.sh` prefers `origin/<base>` over a local base branch and never resolves a short citation to a changed symlink that leaves the repo.
+- `scripts/extras.sh` acts on the repo it sits in (`KIT_EXTRAS_REPO` selects another); `CLAUDE_PROJECT_DIR`, which belongs to hooks, is ignored.
+- The security auditor fails closed: an unreproduced Critical or High finding still blocks the release until the owner rules on it on the saved report (fix, park with an open-item ID, or accept with a stated limit).
+- The High risk tier sets reviewer effort to `xhigh`, or `high` when the reviewer runs on Fable (max): Fable lost about 1.8 points of bug-finding from `high` to `low`.
+
+### Removed
+
+- `handoff.md` and `docs/glossary.md` are no longer installed. The session-start and session-end ritual, the handoff freshness warning in `doctor` and the glossary pointers are gone.
+- `scripts/set-models.sh --cross`; use `scripts/extras.sh on codex`.
+
+### Upgrade notes
+
+- Nothing is lost: an upgrade keeps each extra as the repo had it. From 1.5, `stop-warning`, `verify-review`, `profiles` (with `stuck-detect.sh`) and `metrics` stay on and `codex` stays as it was. From 1.4, `profiles` and `metrics` come on and `stop-warning` and `verify-review` arrive off; switch them on with `scripts/extras.sh on <name>`. Run `scripts/extras.sh status` afterwards and record the result in `docs/decisions.md`.
+- Switching an extra rewrites `.claude/settings.json` with 2-space indentation. An untailored copy comes back byte-identical after `on` then `off`. While a hook-bearing extra (`stop-warning`) is on, `.claude/settings.json` differs from the kit's copy, so later upgrades list it as tailored even if you never edited it, and later kit changes to it arrive as `.kit` merges. A tailored copy keeps its other entries.
+- `--cross` moved: `scripts/set-models.sh <profile> --cross` is now `scripts/extras.sh on codex`.
+- `handoff.md` and `docs/glossary.md` show as retired; they are not deleted and are now your own files. Delete them or keep them. Remove their lines from your `CLAUDE.md` and the glossary pointer from `.claude/agents/planner.md`.
+- A tailored `scripts/check.sh`: add the line that hands the run to the stuck detector, right after the `cd`, and keep the stamp lines from 1.5. Both do nothing until their extra is on, and `extras.sh status` warns when an extra that is on lacks its line:
+
+  ```bash
+  [[ -z "${KIT_STUCK_INNER:-}" && -f scripts/stuck-detect.sh ]] && exec bash scripts/stuck-detect.sh "$@"
+  ```
+
+- A tailored `.claude/settings.json`: the `Stop` hook belongs to the stop-warning extra. If you merge by hand, keep the entry when the extra is on, then run `scripts/extras.sh sync`.
+- The profile values changed (see Changed). With profiles on and untailored seats, re-apply with `scripts/set-models.sh <lite|standard|max>`: the standard writer moves to Sonnet/high only then. `set-models.sh` refuses (exit 1, nothing changed) a seat whose model/effort is none of the profiles' values for its role, so a tailored agent file stays as you set it; `--force` overrides. The reviewer and the writer now differ in every profile, and `doctor` warns when they match.
+- The stop-warning stamp has a new format: expect one warning until the next `scripts/check.sh all` passes.
+- A tailored `CLAUDE.md`: the Workflow section is shorter. Move your risk-tier and ladder text to `docs/rollout.md` or take the kit's version.
+- Re-running an older kit's `--upgrade` over a 1.6 repo is not clean, but destroys nothing: active extra files show as tailored `.kit` files, dormant ones as retired, and 1.5's installer re-installs the dormant extras at their active paths as `new` (the extras then run, so run `scripts/extras.sh status` and switch off what you did not want).
+
 ## [1.5] — 2026-11-09
 
 ### Added
