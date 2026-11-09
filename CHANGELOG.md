@@ -32,6 +32,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 
 ### Fixed
 
+- `scripts/verify-review.sh` could read a file outside the repository: a shortened citation (`escape:1`) resolved by suffix to a changed file that was a symlink pointing out of the tree, and the outside file's line was quoted as verified. A resolved citation is now contained like a direct one. It also diffed against a stale local `<base>` before `origin/<base>`, so coverage listed unrelated upstream files; `origin/<base>` now comes first, as in `scripts/check.sh`. Found in Cronxi (Codex review of its kit 1.5 upgrade).
 - `scripts/codex-review.sh` stops with `codex-review: git diff failed` (exit 1) when building the diff fails, for example on a required clean filter that errors; before, it reviewed a partial diff.
 - `CLAUDE.md` wrote the example open-item ID as `O1`, so `check.sh doctor` failed on any tailored repo whose `docs/open.md` had no O1. It now reads `Oxx`.
 - `check.sh doctor` read codex report names with spaces as several files.

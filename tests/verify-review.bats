@@ -186,3 +186,33 @@ verify() { scripts/verify-review.sh "$REPORT"; }
   run verify
   assert_line --partial "path outside the repository"
 }
+
+@test "a shortened citation of a changed symlink never reads a file outside the repository" {
+  echo "the outside sentinel line lives here" >"$BATS_TEST_TMPDIR/outside.txt"
+  ln -s "$BATS_TEST_TMPDIR/outside.txt" src/escape
+  report $'- [ ] [90] `escape:1` — wrong\n  > the outside sentinel line lives here' "read: src/app.js, src/old.js, src/escape"
+  run verify
+  assert_failure 1
+  assert_line --partial "quotes: 0 verified, 1 unverified"
+}
+
+@test "changed files come from origin/<base>, not a stale local <base>" {
+  local upstream="$BATS_TEST_TMPDIR/upstream" other="$BATS_TEST_TMPDIR/other"
+  git clone -q --bare . "$upstream"
+  git -C "$upstream" symbolic-ref HEAD refs/heads/main
+  git remote add origin "$upstream"
+  # upstream main moves on; this clone fetches it, but its local main stays behind
+  git clone -q "$upstream" "$other"
+  git -C "$other" checkout -q main
+  echo x >"$other/unrelated.md"
+  git -C "$other" add unrelated.md
+  git -C "$other" commit -qm upstream
+  git -C "$other" push -q origin main
+  git fetch -q origin
+  git rebase -q --autostash origin/main
+  report $'- [ ] [90] src/app.js:3 — wrong\n  > const total = items.reduce((a, b) => a + b, 0);'
+  run verify
+  assert_success
+  assert_line "coverage: 2 changed files, 0 not in ### Coverage"
+  assert_line --regexp '^checked: .* · base: origin/main@[0-9a-f]{7} · scripts/verify-review.sh$'
+}
