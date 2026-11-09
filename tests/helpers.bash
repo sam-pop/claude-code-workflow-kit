@@ -3,6 +3,10 @@
 # timeout and claude only where a test asks for them (use_stub).
 
 REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+
+# Byte-order collation for sort, ls and globs, as the installer's manifest uses: macOS defaults to a
+# case-insensitive locale, which reorders expected lists (CI macOS leg, first run).
+export LC_ALL=C
 load "$REPO_ROOT/node_modules/bats-support/load"
 load "$REPO_ROOT/node_modules/bats-assert/load"
 
