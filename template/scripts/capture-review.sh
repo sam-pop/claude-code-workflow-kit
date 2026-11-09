@@ -6,6 +6,9 @@
 # Saved by the first line: "## Review:" -> review, "## Security audit:" -> security,
 # "## Codex review:" -> codex, "## STUCK:" -> stuck (a writer that hit a stop rule). Anything else
 # is ignored, so a normal writer report or a handback from any other agent is never saved.
+# Review and codex reports are then checked by scripts/verify-review.sh, whose `### Verification`
+# block is appended to the saved file; when it finds issues (an incomplete report, a quote not in
+# the code, a changed file not in ### Coverage) the hook prints a systemMessage with its summary.
 # Always exits 0: capture never blocks the work.
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/..}" || exit 0
 command -v python3 >/dev/null || exit 0
@@ -34,5 +37,16 @@ sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=Tru
 os.makedirs("docs/reviews", exist_ok=True)
 path = "docs/reviews/%s-%s-%s.md" % (datetime.datetime.now().strftime("%Y-%m-%d-%H%M%S"), sha, kind)
 open(path, "w", encoding="utf-8").write(t.rstrip() + "\n")
+if kind in ("review", "codex") and os.path.isfile("scripts/verify-review.sh"):
+    try:
+        r = subprocess.run(["bash", "scripts/verify-review.sh", path], capture_output=True, text=True,
+                           errors="replace", timeout=25)
+    except Exception:
+        sys.exit(0)
+    if r.returncode in (0, 1) and r.stdout.strip():
+        open(path, "a", encoding="utf-8").write(r.stdout.rstrip() + "\n")
+    if r.returncode == 1:
+        keep = [l for l in r.stdout.split("\n") if l.startswith(("status:", "quotes:", "coverage:"))]
+        print(json.dumps({"systemMessage": "Review saved to %s: %s" % (path, "; ".join(keep))}))
 '
 exit 0

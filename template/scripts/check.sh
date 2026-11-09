@@ -97,12 +97,15 @@ security() {
 }
 
 run_all() {
-  local rc=0
+  local rc=0 t
+  # The two check-stamp lines let the Stop hook tell when checks last passed; keep them when tailoring.
+  t=$(bash scripts/check-stamp.sh tree 2>/dev/null)
   lint || rc=1
   test_ || rc=1
   build || rc=1
   security || rc=1
   bash scripts/doctor.sh || rc=1
+  [[ $rc -eq 0 && -n "$t" ]] && bash scripts/check-stamp.sh record "$t"
   echo "== all: $([[ $rc -eq 0 ]] && echo PASS || echo FAIL)"
   return $rc
 }

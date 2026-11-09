@@ -19,7 +19,7 @@ scripts/check.sh lint      # shellcheck, shfmt, markdownlint-cli2, lychee (offli
 scripts/check.sh test      # bats tests/
 scripts/check.sh build     # skipped: the kit ships source
 scripts/check.sh security  # gitleaks, tracked sensitive files
-scripts/check.sh doctor    # kit hygiene (template/ left out of the open-item scan)
+scripts/check.sh doctor    # kit hygiene (template/ and tests/ left out of the open-item scan)
 scripts/check.sh all       # everything
 ```
 
@@ -55,7 +55,7 @@ Run agents in the foreground, one at a time, and wait for each report before sta
 1. **Small fix** (1–2 files, obvious, reversible): make the change in the main session, run `scripts/check.sh all`, then the **reviewer** agent.
 2. **Larger change** (3+ files, a migration, or the owner asks): the **planner** agent; it states the risk tier, and you confirm the tier with the owner. Put its Questions to the owner in one round, each with its recommended answer, and wait. Then the **writer** agent with the confirmed blueprint, then the **reviewer** agent.
 3. **Before a release**, and quarterly: the **security-auditor** agent. Critical and High findings block the release only when they carry a reproduction; note the served model (from `/tasks`) on the saved report.
-4. Report the reviewer's findings and what was done with each before committing. Pushing and merging are the owner's.
+4. Report the reviewer's findings and what was done with each before committing; read the `### Verification` block at the end of the saved report (`docs/reviews/`) and pass on its unverified quotes, uncovered files and an incomplete status. Pushing and merging are the owner's.
 
 Agents brief each other through the delegation prompt: name the change, the files, the blueprint if any, the base branch, and the rung and risk tier below.
 

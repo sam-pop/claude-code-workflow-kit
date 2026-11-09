@@ -137,3 +137,19 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   assert_success
   assert_output --partial "codex (30d): reports 2 fixed 1 dismissed 1"
 }
+
+@test "warns when a tailored check.sh does not call check-stamp" {
+  tailor
+  sed -i.bak '/check-stamp/d' scripts/check.sh && rm -f scripts/check.sh.bak
+  run bash scripts/doctor.sh
+  assert_output --partial "warn: scripts/check.sh does not call check-stamp"
+}
+
+@test "review stats count incomplete reports and unverified quotes" {
+  tailor
+  mkdir -p docs/reviews
+  printf -- '- [ ] [90] a\nstatus: incomplete (missing: ### Coverage)\nquotes: 1 verified, 2 unverified, 0 unquoted\n' >docs/reviews/2026-01-01-000000-abc-review.md
+  printf -- '- [ ] [90] b\nstatus: complete\nquotes: 0 verified, 1 unverified, 1 unquoted\n' >docs/reviews/2026-01-02-000000-abc-review.md
+  run bash scripts/doctor.sh
+  assert_output --partial "unmarked: 2  incomplete: 1  unverified quotes: 3"
+}

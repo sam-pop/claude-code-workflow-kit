@@ -126,7 +126,7 @@ security() {
   else
     rc=1
   fi
-  skip "dependency audit: no runtime dependencies; dev tools pinned by package-lock.json and scripts/tools.sh; Dependabot alerts"
+  skip "dependency audit: no runtime dependencies; dev tools pinned by package-lock.json and scripts/tools.sh; npm audit advisories in markdownlint-cli2's dev-only dependency tree accepted 2026-11-09, fixes arrive through Dependabot"
   skip "semgrep: shellcheck covers the shell code"
   # Files that should never be tracked.
   if git ls-files | grep -E '(^|/)\.env(\.[^/]+)?$|\.pem$|\.p12$|(^|/)id_(rsa|ed25519)$' | grep -v '\.example$'; then
@@ -136,15 +136,18 @@ security() {
   return $rc
 }
 
-doctor() { DOCTOR_SKIP_PATHS=template bash scripts/doctor.sh; }
+doctor() { DOCTOR_SKIP_PATHS="template tests" bash scripts/doctor.sh; }
 
 run_all() {
-  local rc=0
+  local rc=0 t
+  # The two check-stamp lines let the Stop hook tell when checks last passed; keep them when tailoring.
+  t=$(bash scripts/check-stamp.sh tree 2>/dev/null)
   lint || rc=1
   test_ || rc=1
   build || rc=1
   security || rc=1
   doctor || rc=1
+  [[ $rc -eq 0 && -n "$t" ]] && bash scripts/check-stamp.sh record "$t"
   echo "== all: $([[ $rc -eq 0 ]] && echo PASS || echo FAIL)"
   return $rc
 }

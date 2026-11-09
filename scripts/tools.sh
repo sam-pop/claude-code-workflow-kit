@@ -8,8 +8,10 @@
 # yourself at the versions `versions` prints and put them on PATH.
 # Exit: 0 ok, 1 download/checksum/platform failure, 2 usage.
 # Checksum sources: gitleaks and actionlint from the release's checksums file, lychee from the
-# release's per-asset .sha256 files; shellcheck and shfmt publish none, so their pins were
-# cross-checked against the sha256 that shellcheck-py 0.11.0.1 and shfmt-py 4.2.0 (PyPI) pin.
+# release's per-asset .sha256 files. shellcheck (koalaman/shellcheck) and shfmt (mvdan/sh) publish
+# no checksums file; their pins were computed from the downloads and checked against a second,
+# independent source: the sha256 pinned in the PyPI sdists shellcheck_py-0.11.0.1 (setup.cfg) and
+# shfmt_py-4.2.0 (setup.py). Re-check both sources when bumping either tool.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="$ROOT/.tools/bin"

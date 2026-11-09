@@ -98,6 +98,8 @@ fi
 if compgen -G ".github/workflows/*.y*ml" >/dev/null && grep -lE 'CODEX_API_KEY' .github/workflows/*.y*ml >/dev/null 2>&1; then
   warn "CODEX_API_KEY in .github/workflows: OpenAI warns against a job-level CODEX_API_KEY where repo code runs"
 fi
+grep -q 'check-stamp' scripts/check.sh 2>/dev/null \
+  || warn "scripts/check.sh does not call check-stamp: the Stop hook cannot tell when checks passed; see CHANGELOG 1.5 Upgrade notes"
 kits=$(git ls-files -co --exclude-standard '*.kit' 2>/dev/null | wc -l | tr -d ' ')
 [[ "$kits" != 0 ]] && warn "$kits unmerged *.kit file(s): merge each into its original, then delete it"
 [[ -f .claude/kit-upgrade.md ]] && warn "upgrade merge not finished: .claude/kit-upgrade.md is still present (open Claude Code and say: Read .claude/kit-upgrade.md)"
@@ -115,7 +117,9 @@ if ((${#reviews[@]})); then
   unmarked=$(cat "${reviews[@]}" | grep -cE '^- \[ \] \[[0-9]+\]')
   fixed=$(cat "${reviews[@]}" | grep -E '^- \[x\]' | grep -vc 'dismissed:')
   dismissed=$(cat "${reviews[@]}" | grep -c 'dismissed:')
-  echo "reviews (30d): $recent  findings fixed: $fixed  dismissed: $dismissed  unmarked: $unmarked"
+  incomplete=$(cat "${reviews[@]}" | grep -c '^status: incomplete')
+  unverified=$(cat "${reviews[@]}" | sed -n 's/^quotes: [0-9]* verified, \([0-9]*\) unverified.*/\1/p' | awk '{n += $1} END {print n + 0}')
+  echo "reviews (30d): $recent  findings fixed: $fixed  dismissed: $dismissed  unmarked: $unmarked  incomplete: $incomplete  unverified quotes: $unverified"
   ((fixed + dismissed > 0)) && echo "agreement rate: $((100 * fixed / (fixed + dismissed)))%"
   cat "${reviews[@]}" | grep -oE 'dismissed: .*' | sort | uniq -c | awk '$1>=2 {$1=$1; print "  promote to false-positives? ", $0}'
 fi

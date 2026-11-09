@@ -51,6 +51,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}/scripts/check-stamp.sh\" hook",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

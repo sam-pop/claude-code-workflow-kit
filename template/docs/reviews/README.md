@@ -8,6 +8,25 @@ Kinds:
 - `codex`: the Codex second opinion. Mark its findings the same way as any other; the doctor reports them on their own `codex (30d)` line.
 - `stuck`: a writer that hit a stop rule. These are escalation records, not findings to tick off; the doctor counts them as `escalations (30d)`.
 
+## Verification
+
+When a review or codex report is saved, the hook runs `scripts/verify-review.sh` on it and appends a `### Verification` block:
+
+```text
+### Verification
+checked: 2026-11-09 14:02 · base: main@1a2b3c4 · scripts/verify-review.sh
+status: complete
+quotes: 4 verified, 1 unverified, 0 unquoted
+- unverified [92] src/export.ts:41 — quote not found within ±3 lines
+coverage: 6 changed files, 1 not in ### Coverage: src/routes.ts
+```
+
+- `status` is `incomplete` when a required section is missing (Summary, Run, Checks, Standards, Spec, Considered below threshold, Not reviewed, Coverage; codex reports need no Run).
+- A quote is `verified` when the text after the `>` marker under a finding appears within 3 lines of the cited lines, or on a line the diff removed. `unverified` means the reviewer may be describing code that is not there: check that finding first. `unquoted` findings have no quote line.
+- `coverage` lists changed files the reviewer did not name under `### Coverage`.
+
+When anything is off, the hook also shows a one-line summary in the session. `check.sh doctor` counts incomplete reports and unverified quotes in its review stats.
+
 ## What you do with a finding
 
 Edit the saved report, not the chat:
