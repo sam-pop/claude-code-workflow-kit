@@ -83,3 +83,21 @@ field() { awk -v k="$2:" 'NR>1 && /^---/ {exit} $1==k {print $2}' ".claude/agent
   scripts/set-models.sh standard >/dev/null
   cmp .claude/agents/writer.md "$BATS_TEST_TMPDIR/crlf"
 }
+
+@test "no profile puts the reviewer on the writer's model (addendum 1)" {
+  for p in lite standard max; do
+    scripts/set-models.sh "$p" >/dev/null
+    [[ "$(field writer model)" != "$(field reviewer model)" ]] || fail "$p: writer and reviewer both on $(field writer model)"
+  done
+  assert_equal "$(grep -E '^#   (lite|standard|max) +[a-z]+/' scripts/set-models.sh | tr -s ' ')" "# lite sonnet/high sonnet/high opus/medium opus/high
+# standard opus/high sonnet/high opus/high opus/xhigh
+# max opus/high opus/medium fable/high fable/high"
+}
+
+@test "the shipped agents are the standard profile: set-models.sh standard changes nothing (addendum 1)" {
+  bash scripts/extras.sh off profiles >/dev/null
+  cat .claude/agents/*.md >"$BATS_TEST_TMPDIR/shipped"
+  bash scripts/extras.sh on profiles >/dev/null
+  scripts/set-models.sh standard >/dev/null
+  cat .claude/agents/*.md | cmp - "$BATS_TEST_TMPDIR/shipped"
+}

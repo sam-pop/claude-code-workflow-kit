@@ -25,7 +25,7 @@ isolate() {
   git config --global protocol.file.allow always
   git config --global commit.gpgsign false
   unset CLAUDE_CODE_EFFORT_LEVEL CLAUDE_CODE_SUBAGENT_MODEL_FORCE GITLEAKS_CONFIG GITLEAKS_CONFIG_TOML \
-    CLAUDE_PROJECT_DIR BASE_BRANCH DOCTOR_SKIP_PATHS
+    CLAUDE_PROJECT_DIR BASE_BRANCH DOCTOR_SKIP_PATHS KIT_STUCK_INNER
   STUB_LOG="$BATS_TEST_TMPDIR/stub-log"
   mkdir -p "$STUB_LOG"
   export STUB_LOG

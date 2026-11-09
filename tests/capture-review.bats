@@ -126,3 +126,11 @@ on_branch_with_readme_change() {
   assert_output --partial "coverage: 2 changed files, 1 not in ### Coverage (named in the report)"
   refute_output --partial "curl"
 }
+
+@test "a Codex plan review is saved as -codex-plan.md and never verified (addendum 4)" {
+  stop_json $'## Codex plan review: docs/plans/x.md — gpt-6.1-sol/high\n\n### Summary\nok' | scripts/capture-review.sh stop
+  run saved
+  assert_output --regexp -- '-codex-plan\.md$'
+  run grep -c Verification "$(saved)"
+  assert_output 0
+}

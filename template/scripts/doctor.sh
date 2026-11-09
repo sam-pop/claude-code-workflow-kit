@@ -98,6 +98,12 @@ for f in .claude/agents/*.md; do
   e=$(front "$f" effort)
   [[ "$m" == sonnet && ("$e" == medium || "$e" == low) ]] && warn "$(basename "$f" .md) is sonnet at effort: $e; never set Sonnet below high (medium dropped ~7 to ~15 points on Anthropic's benchmarks)"
 done
+# The model that wrote the code never reviews it.
+if [[ -f .claude/agents/writer.md && -f .claude/agents/reviewer.md ]]; then
+  wm=$(front .claude/agents/writer.md model)
+  rm_=$(front .claude/agents/reviewer.md model)
+  [[ -n "$wm" && "$wm" == "$rm_" ]] && warn "reviewer and writer both use model: $wm: the reviewer runs on the writer's model; it reviews its own family's code (give one of them another model:)"
+fi
 # Extras (scripts/extras.sh): warnings about a half-enabled extra, Codex, and CODEX_API_KEY.
 if [[ -f scripts/extras.sh ]]; then
   bash scripts/extras.sh status 2>/dev/null | grep '^warn:'

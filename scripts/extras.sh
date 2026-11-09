@@ -11,7 +11,7 @@
 #            whose script is missing is removed (scripts/install.sh --upgrade runs this)
 # Extras (docs/rollout.md, Extras):
 #   codex          .claude/agents/codex-reviewer.md
-#   profiles       scripts/set-models.sh
+#   profiles       scripts/set-models.sh, scripts/stuck-detect.sh and its line in scripts/check.sh
 #   stop-warning   scripts/check-stamp.sh, a Stop hook, and the stamp lines in scripts/check.sh
 #   verify-review  scripts/verify-review.sh
 #   metrics        scripts/review-stats.sh
@@ -36,7 +36,7 @@ usage() {
 files_of() {
   case "$1" in
     codex) echo codex-reviewer.md ;;
-    profiles) echo set-models.sh ;;
+    profiles) echo set-models.sh stuck-detect.sh ;;
     stop-warning) echo check-stamp.sh ;;
     verify-review) echo verify-review.sh ;;
     metrics) echo review-stats.sh ;;
@@ -52,6 +52,7 @@ hook_of() {
 # A non-comment line scripts/check.sh needs while the extra is on: what it runs.
 checkline_of() {
   case "$1" in
+    profiles) echo 'scripts/stuck-detect.sh' ;;
     stop-warning) echo 'scripts/check-stamp.sh record' ;;
   esac
 }

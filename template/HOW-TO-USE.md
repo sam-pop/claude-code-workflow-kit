@@ -49,9 +49,9 @@ The kit ships on the **standard** profile. Switch with `scripts/set-models.sh <l
 
 | Profile | planner | writer | reviewer | security-auditor |
 |---|---|---|---|---|
-| **lite** (Pro $20 plans) | sonnet/high | sonnet/high | sonnet/high | opus/high |
-| **standard** (default) | opus/high | opus/medium | opus/high | opus/xhigh |
-| **max** (plans with Fable; experimental) | fable/high | opus/medium | opus/high | fable/high |
+| **lite** (Pro $20 plans) | sonnet/high | sonnet/high | opus/medium | opus/high |
+| **standard** (default) | opus/high | sonnet/high | opus/high | opus/xhigh |
+| **max** (plans with Fable; experimental) | opus/high | opus/medium | fable/high | fable/high |
 
 `--cross` also turns on the codex-reviewer, a Codex second opinion on High-risk diffs and before a release (off by default). It sends those diffs to OpenAI; on client work get the client's OK first. It needs gitleaks (it refuses to send anything without it) and refuses when the change edits its own script or agent file; the reviewer checklist it sends comes from the base branch, not the change. It is not available on Review-only (the script reviews its own repo, not someone else's PR). Fable bills usage credits on Pro and standard Team plans from the first request, and `claude -p` does so without asking; set a cap in `/usage-credits`. Review effort scales with risk and the writer escalates when stuck: both are defined in `CLAUDE.md` (Workflow), which needs Claude Code v2.1.292 or later. Details and sources: `docs/rollout.md`, Model profiles, and [the research report](https://github.com/sam-pop/claude-code-workflow-kit/blob/main/docs/research/coding-agent-model-effort-combos.md).
 

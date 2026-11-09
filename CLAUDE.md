@@ -69,19 +69,18 @@ The tier sets the reviewer's effort. Pass it as the Agent tool's `effort` parame
 | Medium | Normal blueprint change | `high` (frontmatter default) |
 | High | Auth, tenancy, money, personal data, secrets, migrations or destructive writes, concurrency, `.claude/` `scripts/` or CI, or any escalated writer output | `xhigh` (a hypothesis: `template/docs/rollout.md` has the measure that drops it) |
 
-On the **lite** profile (`.claude/agents/writer.md` has `model: sonnet`) Low and Medium use the reviewer as defined (sonnet/high); High passes Agent `model: opus, effort: medium`.
+Tiers change the reviewer's effort only, never its model: the reviewer never runs on the writer's model.
 
 ### Cross-model review
 
-Only if `.claude/agents/codex-reviewer.md` exists (`scripts/set-models.sh <profile> --cross`). Run **codex-reviewer** after the reviewer on High-risk diffs (`scripts/codex-review.sh high <base>`) and once before a release (`scripts/codex-review.sh release`). Show the owner where it agrees with the reviewer and what only it raised. It never blocks.
+Only if `.claude/agents/codex-reviewer.md` exists (`scripts/extras.sh on codex`). On a larger change, save the planner's blueprint to a file in the repo and run **codex-reviewer** on it (`scripts/codex-review.sh plan <file>`) before the owner's question round; show its objections next to the planner's questions. Run it again after the reviewer on High-risk diffs (`scripts/codex-review.sh high <base>`) and once before a release (`scripts/codex-review.sh release`). Show the owner where it agrees with the reviewer and what only it raised. It never blocks.
 
 ### Writer ladder
 
 Rung 1 is the writer as defined. Escalate on: a check still failing after the writer's own fixes; the reviewer's re-run disagreeing with the writer's report; a blocking finding surviving one repair pass at the same rung; a `## STUCK:` report; the owner reporting a rung that used more than 3x its usual tokens. NOT CONFIGURED checks and Warnings never trigger escalation.
 
-- **Rung 2**: a fresh writer with Agent `effort: high`, given the blueprint and a failure brief. Never resume the failed one. The tree holds the last attempt: keep, fix or revert from it.
-- **Rung 3**: a fresh writer with Agent `model: fable, effort: high` if `.claude/agents/planner.md` has `model: fable` (max profile), else `effort: xhigh`.
-- **Lite** (`writer.md` has `model: sonnet`): rung 1 is sonnet/high, rung 2 Agent `model: opus, effort: medium`, rung 3 `model: opus, effort: high`.
+- **Rung 2 and on**: a fresh writer one effort step up (Agent `effort`), on the same model, given the blueprint and a failure brief. Never resume the failed one. The tree holds the last attempt: keep, fix or revert from it.
+- Steps: a writer at `high` (lite, standard) goes to `xhigh`; one at `medium` (max) goes to `high`, then `xhigh`. Never pass Agent `model`: an escalated writer must not land on the reviewer's model. The measured gain came from re-running failures at higher effort; switching models mid-ladder was never measured.
 - **Then stop**: briefs go to the planner and the owner is told.
 
 Name the rung and the trigger in each writer and reviewer prompt.

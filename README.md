@@ -235,9 +235,9 @@ scripts/set-models.sh standard   # or: lite | max, optionally with --cross
 
 | Profile | Planner | Writer | Reviewer | Security auditor | Best for |
 |---|---|---|---|---|---|
-| **lite** | Sonnet / high | Sonnet / high | Sonnet / high | Opus / high | Pro ($20) plans. About half the cost per solved task of standard's writer ($0.11 vs $0.22), at a lower first-try solve rate (87.6% vs 92.8%); the ladder catches failures. |
-| **standard** *(default)* | Opus / high | Opus / medium | Opus / high | Opus / xhigh | Any plan with Opus access. Planner quality earns the writer a `medium` effort; the reviewer never runs below `medium`. |
-| **max** | Fable / high | Opus / medium | Opus / high | Fable / high | *Experimental.* Plans or budgets that include Fable, used only in the two rare, low-volume roles. No comparative Fable-vs-Opus data exists for planning or auditing, so this is a hypothesis to test, not a measured gain. |
+| **lite** | Sonnet / high | Sonnet / high | Opus / medium | Opus / high | Pro ($20) plans. Sonnet plans and writes; Opus reviews and audits. |
+| **standard** *(default)* | Opus / high | Sonnet / high | Opus / high | Opus / xhigh | Any plan with Opus access. Sonnet writes, Opus reviews: the model that wrote the code never reviews it. The reviewer never runs below `medium`. |
+| **max** | Opus / high | Opus / medium | Fable / high | Fable / high | *Experimental.* Plans or budgets that include Fable, used to review and audit what Opus wrote. No comparative Fable-vs-Opus data exists for planning or auditing, so this is a hypothesis to test, not a measured gain. |
 
 `--cross` adds the optional [Codex reviewer](#cross-model-review-codex) (off by default). Review effort scales with risk and the writer escalates when stuck; both are defined in `CLAUDE.md` (Workflow). Never set Sonnet below `high`: at `medium` it dropped about 7 points on SWE-bench Pro and about 15 on Anthropic's internal agentic-coding benchmark (both Anthropic's own measurements).
 

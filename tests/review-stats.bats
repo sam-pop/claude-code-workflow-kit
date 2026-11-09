@@ -54,3 +54,9 @@ setup() {
   assert_output --partial "agreement rate: 0%"
   assert_output --partial "promote to false-positives?  2 dismissed: style nit"
 }
+
+@test "Codex plan reviews count with Codex reports, not as reviews" {
+  printf -- '- [x] [90] fixed\n' >docs/reviews/2026-01-01-000000-abc-codex-plan.md
+  run scripts/review-stats.sh
+  assert_output "codex (30d): reports 1 fixed 1 dismissed 0"
+}

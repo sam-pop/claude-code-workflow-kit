@@ -3,10 +3,11 @@
 # Usage: scripts/set-models.sh <lite|standard|max>   (profiles extra: scripts/extras.sh on profiles)
 #
 #             planner      writer        reviewer     security-auditor
-#   lite      sonnet/high  sonnet/high   sonnet/high  opus/high
-#   standard  opus/high    opus/medium   opus/high    opus/xhigh
-#   max       fable/high   opus/medium   opus/high    fable/high
+#   lite      sonnet/high  sonnet/high   opus/medium  opus/high
+#   standard  opus/high    sonnet/high   opus/high    opus/xhigh
+#   max       opus/high    opus/medium   fable/high   fable/high
 #
+#   The model that wrote the code never reviews it: writer and reviewer differ in every profile.
 #   lite is for Pro ($20) plans; never set Sonnet below high (medium: -7 to -15 points). max is experimental.
 #   Cross-model review (Codex) is its own extra: scripts/extras.sh on codex
 #
@@ -15,7 +16,8 @@
 # Exit codes: 0 ok, 1 run from .claude/optional/ (the extra is off), 2 usage (--cross included).
 # Each line is model/effort. Aliases track the latest model of each family. Fable bills usage credits on
 # some plans; interactive sessions ask first, `claude -p` and SDK runs do not (see docs/rollout.md).
-# The writer's effort is the first rung of the escalation ladder (docs/rollout.md, Extras, profiles).
+# The writer's effort is the first rung of the escalation ladder, which raises effort only and never
+# changes the writer's model (docs/rollout.md, Extras, profiles).
 # Also warns on a Claude Code older than 2.1.292 (no per-call Agent effort, so no ladder or risk tiers)
 # and on effortLevel in ~/.claude/settings.json, and notes Fable billing on the max profile.
 set -euo pipefail
@@ -32,7 +34,7 @@ for a in "$@"; do
   case "$a" in
     lite | standard | max)
       [[ -z "$profile" ]] || {
-        sed -n '2,11p' "$0"
+        sed -n '2,12p' "$0"
         exit 2
       }
       profile="$a"
@@ -42,7 +44,7 @@ for a in "$@"; do
       exit 2
       ;;
     *)
-      sed -n '2,11p' "$0"
+      sed -n '2,12p' "$0"
       exit 2
       ;;
   esac
@@ -51,23 +53,23 @@ case "$profile" in
   lite)
     planner=sonnet/high
     writer=sonnet/high
-    reviewer=sonnet/high
+    reviewer=opus/medium
     auditor=opus/high
     ;;
   standard)
     planner=opus/high
-    writer=opus/medium
+    writer=sonnet/high
     reviewer=opus/high
     auditor=opus/xhigh
     ;;
   max)
-    planner=fable/high
+    planner=opus/high
     writer=opus/medium
-    reviewer=opus/high
+    reviewer=fable/high
     auditor=fable/high
     ;;
   *)
-    sed -n '2,11p' "$0"
+    sed -n '2,12p' "$0"
     exit 2
     ;;
 esac

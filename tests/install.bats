@@ -205,7 +205,9 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   refute_line --regexp '^new: +\.claude/optional/codex-reviewer.md'
   # 1.5 and 1.6 add exactly these files: stop-warning and verify-review arrive off, metrics on.
   assert_equal "$(grep -E '^new: ' <<<"$output" | awk '{print $2}' | sort | tr '\n' ' ')" \
-    ".claude/optional/check-stamp.sh .claude/optional/verify-review.sh .github/dependabot.yml scripts/extras.sh scripts/review-stats.sh "
+    ".claude/optional/check-stamp.sh .claude/optional/stuck-detect.sh .claude/optional/verify-review.sh .github/dependabot.yml scripts/extras.sh scripts/review-stats.sh "
+  # profiles is on, so sync moves its new stuck detector next to set-models.sh
+  assert_line "moved: .claude/optional/stuck-detect.sh -> scripts/stuck-detect.sh"
   assert_line --regexp '^(current|replaced): +scripts/set-models\.sh$'
   assert_line --regexp '\.claude/agents/codex-reviewer\.md'
   [[ ! -e "$TARGET/.claude/optional/codex-reviewer.md" ]]
@@ -246,6 +248,8 @@ installed_from_15() {
   assert_line --regexp '^replaced: +\.claude/settings\.json$'
   assert_line --partial "hook added: Stop"
   assert_line --regexp '^new: +scripts/review-stats\.sh$'
+  assert_line "moved: .claude/optional/stuck-detect.sh -> scripts/stuck-detect.sh"
+  [[ -x "$TARGET/scripts/stuck-detect.sh" ]]
   for f in check-stamp.sh verify-review.sh set-models.sh; do
     assert_line --regexp "^(current|replaced): +scripts/$f\$"
     [[ -x "$TARGET/scripts/$f" && ! -e "$TARGET/.claude/optional/$f" ]] || fail "$f not on"

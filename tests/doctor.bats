@@ -93,7 +93,7 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   scripts/set-models.sh lite >/dev/null
   sed -i.bak 's/^effort: high$/effort: medium/' .claude/agents/writer.md
   sed -i.bak 's/^effort: high$/effort: max/' .claude/agents/planner.md
-  sed -i.bak 's/^effort: high$/effort: low/' .claude/agents/reviewer.md
+  sed -i.bak 's/^effort: medium$/effort: low/' .claude/agents/reviewer.md
   rm -f .claude/agents/*.bak
   run scripts/check.sh doctor
   assert_output --partial "warn: writer is sonnet at effort: medium"
@@ -210,4 +210,20 @@ PY2
   tailor
   run env CLAUDE_CODE_USE_BEDROCK=1 bash scripts/doctor.sh
   assert_output --partial "warn: CLAUDE_CODE_USE_BEDROCK is set"
+}
+
+@test "warns when the reviewer runs on the writer's model; the shipped agents and every profile do not (addendum 3)" {
+  tailor
+  run bash scripts/doctor.sh
+  refute_output --partial "reviewer and writer both use model"
+  extras_on profiles
+  for p in lite standard max; do
+    scripts/set-models.sh "$p" >/dev/null
+    run bash scripts/doctor.sh
+    refute_output --partial "reviewer and writer both use model"
+  done
+  sed -i.bak 's/^model: .*/model: opus/' .claude/agents/writer.md .claude/agents/reviewer.md && rm -f .claude/agents/*.bak
+  run bash scripts/doctor.sh
+  assert_success
+  assert_output --partial "warn: reviewer and writer both use model: opus: the reviewer runs on the writer's model; it reviews its own family's code"
 }

@@ -1,8 +1,8 @@
 ---
 name: writer
 description: "Implements a blueprint or a small fix in this repo following docs/conventions.md, writes the tests worth having, runs scripts/check.sh, and reports results exactly as they came out, including the defaults it picked."
-model: opus
-effort: medium
+model: sonnet
+effort: high
 color: purple
 ---
 
@@ -43,7 +43,7 @@ If a check prints NOT CONFIGURED or cannot run here, the work is **unverified**:
 
 Stop and report instead of looping when any of these happens:
 
-- The same check fails with the same error 3 times.
+- `scripts/check.sh` prints `same failure N times: …` (the profiles extra counts for you), or the same check fails with the same error 3 times.
 - The same file has been edited 4 times without the test result changing.
 - A check still fails after your own repair attempts.
 
