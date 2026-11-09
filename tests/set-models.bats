@@ -132,3 +132,28 @@ field() { awk -v k="$2:" 'NR>1 && /^---/ {exit} $1==k {print $2}' ".claude/agent
   assert_success
   assert_equal "$(field writer effort)" high
 }
+
+# Write model/effort into the four agents, as an earlier kit's set-models.sh left them.
+seats() {
+  local role pair
+  for pair in "planner:$1" "writer:$2" "reviewer:$3" "security-auditor:$4"; do
+    role=${pair%%:*}
+    sed -i.bak "s#^model: .*#model: ${pair#*:}#; s#^effort: .*#effort: ${pair##*/}#" ".claude/agents/$role.md"
+    sed -i.bak "s#^model: \\(.*\\)/.*#model: \\1#" ".claude/agents/$role.md" && rm ".claude/agents/$role.md.bak"
+  done
+}
+
+@test "seats an earlier kit's lite or max profile wrote are re-applied without --force (1.5 upgrade)" {
+  # 1.5 lite: the reviewer was sonnet/high, on the writer's model
+  seats sonnet/high sonnet/high sonnet/high opus/high
+  assert_equal "$(field reviewer model)/$(field reviewer effort)" sonnet/high
+  run scripts/set-models.sh lite
+  assert_success
+  assert_equal "$(field reviewer model)/$(field reviewer effort)" opus/medium
+  # 1.5 max: the planner was fable/high and the reviewer opus/high, on the writer's model
+  seats fable/high opus/medium opus/high fable/high
+  run scripts/set-models.sh max
+  assert_success
+  assert_equal "$(field planner model)/$(field planner effort)" opus/high
+  assert_equal "$(field reviewer model)/$(field reviewer effort)" fable/high
+}

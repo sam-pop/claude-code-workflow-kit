@@ -428,7 +428,7 @@ Configured in `.claude/settings.json`:
 | `PostToolUse` on edits | Runs `check.sh lint --changed`; on failure, shows the output to Claude so it fixes the problem before moving on. Stays quiet until lint is configured. |
 | `SubagentStop` (reviewer, security-auditor, codex-reviewer, writer) / `SubagentHandback` | Saves reviewer, auditor and Codex reports to `docs/reviews/`, and a writer's `## STUCK:` report (other writer reports are ignored). With the verify-review extra on, reviewer and Codex reports then get a `### Verification` block from `scripts/verify-review.sh` (are the quoted lines really in the files, was every changed file read, are all sections there); when something is off, a one-line summary appears in the session. |
 | `Stop` | Only with the stop-warning extra on (`scripts/extras.sh on stop-warning`). Runs `scripts/check-stamp.sh hook` when Claude finishes a turn. If files differ from the ones the last passing `check.sh all` ran on, committed or not, it shows how many and up to three names; with no passing run recorded, it names the files `git status` shows. Silent when nothing changed and until `check.sh` is configured. It reads the tree without writing to the index or `.git/objects`. |
-| codex-reviewer frontmatter `PreToolUse` (codex extra) | Allows Bash only for `scripts/codex-review.sh plan <file>` (a relative path inside the repo) and `high\|release [ref]`; the script itself refuses when the change edits the review tooling. Tested by script, not yet observed firing in a live session. |
+| codex-reviewer frontmatter `PreToolUse` (codex extra) | Allows Bash only for `scripts/codex-review.sh plan <file>` (a relative `*.md` path inside the repo; the script also refuses git-ignored paths and secrets-file names) and `high\|release [ref]`; the script itself refuses when the change edits the review tooling. Tested by script, not yet observed firing in a live session. |
 | `CLAUDE_CODE_FORK_SUBAGENT=0` | Agents run in sequence, and Claude waits for each report |
 
 ## The improvement loop
@@ -558,7 +558,7 @@ Small changes use two contexts (main session + reviewer). Agents without edit to
 <details>
 <summary><strong>Why does the reviewer run at higher effort than the writer?</strong></summary>
 
-Review is bounded: it reads one diff and emits findings once, while the writer iterates. Its effort is never `low` (Opus at `low` scored 34 points below `medium` at finding bugs) and rises to `xhigh` on High-risk changes, which is a hypothesis: no review-effort ablation exists for Claude. It also reviews in a fresh context and on a different model from the writer (the shipped agent files already differ, and `check.sh doctor` warns if they match), so the model that wrote the code is not grading it. `docs/rollout.md`, Extras, metrics, sets the measures that tell you whether the settings pay off on your own diffs.
+Review is bounded: it reads one diff and emits findings once, while the writer iterates. Its effort is never `low` (Opus at `low` scored 34 points below `medium` at finding bugs) and rises to `xhigh` on High-risk changes (`high` when the reviewer runs on Fable), which is a hypothesis: no review-effort ablation exists for Claude. It also reviews in a fresh context and on a different model from the writer (the shipped agent files already differ, and `check.sh doctor` warns if they match), so the model that wrote the code is not grading it. `docs/rollout.md`, Extras, metrics, sets the measures that tell you whether the settings pay off on your own diffs.
 </details>
 
 <details>

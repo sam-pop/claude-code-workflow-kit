@@ -29,9 +29,9 @@ shell_files() { git ls-files -co --exclude-standard -- '*.sh' '*.bash' '*.bats' 
 
 @test "README profile table matches the profiles in set-models.sh" {
   for p in lite standard max; do
-    want=$(awk -v p="  $p)" '$0 == p {on=1; next} on && /;;/ {exit} on' template/.claude/optional/set-models.sh \
-      | grep -oE '(planner|writer|reviewer|auditor)=[a-z]+/[a-z]+' | cut -d= -f2 | tr '\n' ' ' | sed 's/ $//')
+    want=$(grep -E "^    $p\) echo \"" template/.claude/optional/set-models.sh | sed 's/.*echo "//; s/".*//')
     row=$(grep -E "^\| \*\*$p\*\*" README.md | head -1 | cut -d'|' -f3-6 | tr '[:upper:]' '[:lower:]' | sed 's/ \/ /\//g; s/|/ /g' | tr -s ' ' | sed 's/^ //; s/ $//')
+    [[ -n "$want" ]]
     assert_equal "$row" "$want"
   done
 }

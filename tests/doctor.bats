@@ -232,5 +232,5 @@ PY2
   tailor
   sed -i.bak '/^effort:/d' .claude/agents/security-auditor.md && rm -f .claude/agents/*.bak
   run scripts/check.sh doctor
-  assert_output --partial "warn: security-auditor has no effort: add an \`effort:\` line to its frontmatter (or run \`scripts/set-models.sh <profile>\` if the seats are untailored)"
+  assert_output --partial "warn: security-auditor has no effort: add an \`effort:\` line to its frontmatter (or, with the profiles extra on, run \`scripts/set-models.sh <profile>\` if the seats are untailored)"
 }

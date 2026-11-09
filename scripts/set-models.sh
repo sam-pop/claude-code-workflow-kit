@@ -53,44 +53,42 @@ for a in "$@"; do
       ;;
   esac
 done
-case "$profile" in
-  lite)
-    planner=sonnet/high
-    writer=sonnet/high
-    reviewer=opus/medium
-    auditor=opus/high
-    ;;
-  standard)
-    planner=opus/high
-    writer=sonnet/high
-    reviewer=opus/high
-    auditor=opus/xhigh
-    ;;
-  max)
-    planner=opus/high
-    writer=opus/medium
-    reviewer=fable/high
-    auditor=fable/high
-    ;;
-  *)
-    sed -n '2,12p' "$0"
-    exit 2
-    ;;
-esac
+# The profile table: planner writer reviewer security-auditor, as model/effort.
+profile_values() {
+  case "$1" in
+    lite) echo "sonnet/high sonnet/high opus/medium opus/high" ;;
+    standard) echo "opus/high sonnet/high opus/high opus/xhigh" ;;
+    max) echo "opus/high opus/medium fable/high fable/high" ;;
+    *) return 1 ;;
+  esac
+}
+# Values earlier kits' profiles wrote (1.4, 1.5), so re-applying a profile after an upgrade is not
+# mistaken for overwriting a hand-tailored seat: 1.5 lite reviewer, 1.5 max planner, 1.5 standard writer.
+LEGACY_VALUES="planner:fable/high reviewer:sonnet/high writer:opus/medium"
 
-# Prints "<model>/<effort>" when the seat in agent file $1 (role $2) is none of the profiles' values for
-# that role: a hand-tailored seat. A missing effort: line passes when the model is one a profile uses.
+if ! values=$(profile_values "$profile"); then
+  sed -n '2,12p' "$0"
+  exit 2
+fi
+read -r planner writer reviewer auditor <<<"$values"
+
+# Every value any profile (current or earlier) sets, per role, as "role:model/effort" words.
+KNOWN_VALUES="$LEGACY_VALUES"
+for p in lite standard max; do
+  read -r a b c d <<<"$(profile_values "$p")"
+  KNOWN_VALUES="$KNOWN_VALUES planner:$a writer:$b reviewer:$c security-auditor:$d"
+done
+export KNOWN_VALUES
+
+# Prints "<model>/<effort>" when the seat in agent file $1 (role $2) is none of the values any profile,
+# current or earlier, sets for that role (KNOWN_VALUES): a hand-tailored seat. A missing effort: line passes when the model is one a profile uses.
 tailored_seat() {
   [[ -f "$1" ]] || return 0
   python3 - "$1" "$2" <<'PY'
 import re, sys
 path, role = sys.argv[1:3]
-pairs = {
-    "planner": ["sonnet/high", "opus/high"],
-    "writer": ["sonnet/high", "opus/medium"],
-    "reviewer": ["opus/medium", "opus/high", "fable/high"],
-    "security-auditor": ["opus/high", "opus/xhigh", "fable/high"],
-}[role]
+import os
+pairs = [w.split(":", 1)[1] for w in os.environ["KNOWN_VALUES"].split() if w.split(":", 1)[0] == role]
 head = open(path, encoding="utf-8", newline="").read().replace("\r\n", "\n").partition("\n---\n")[0]
 m = re.search(r"^model:[ \t]*(\S+)", head, re.M)
 if not m:
