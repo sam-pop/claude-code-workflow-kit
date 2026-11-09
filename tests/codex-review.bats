@@ -618,3 +618,42 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   assert_failure 3
   assert_equal "$(codex_calls)" 0
 }
+
+@test "plan: a non-Markdown file exits 2, a secrets file or a git-ignored path exits 5; codex is not called (review item 2)" {
+  mkdir -p config notes data
+  printf 'KEY=x\n' >config/.env
+  printf '# p\n' >notes/plan.md
+  printf '# p\n' >data.csv
+  printf 'notes/\n' >>.gitignore
+  run scripts/codex-review.sh plan config/.env
+  assert_failure 5
+  assert_output --partial "secrets file"
+  run scripts/codex-review.sh plan notes/plan.md
+  assert_failure 5
+  assert_output --partial "git-ignored"
+  run scripts/codex-review.sh plan data.csv
+  assert_failure 2
+  assert_output --partial "Markdown"
+  printf '# p\n' >config/.env.md
+  run scripts/codex-review.sh plan config/.env.md
+  assert_failure 5
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "plan: docs/plans/x.md is accepted and sent (review item 2)" {
+  mkdir -p docs/plans
+  printf '# Blueprint\nStep 1.\n' >docs/plans/x.md
+  run scripts/codex-review.sh plan docs/plans/x.md
+  assert_success
+  assert_equal "$(codex_calls)" 1
+}
+
+@test "plan: the guard denies a non-Markdown plan and secrets-file names (review item 2)" {
+  for c in "scripts/codex-review.sh plan data.csv" "scripts/codex-review.sh plan config/.env" "scripts/codex-review.sh plan key.pem" \
+    "scripts/codex-review.sh plan a/.env.md" "scripts/codex-review.sh plan a/id_rsa"; do
+    run guard_cmd "$c"
+    assert_failure 2
+  done
+  run guard_cmd "scripts/codex-review.sh plan docs/plans/x.md"
+  assert_success
+}

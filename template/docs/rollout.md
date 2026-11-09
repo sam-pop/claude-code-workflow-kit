@@ -70,7 +70,7 @@ Switching moves files and changes only the kit's own hook entry in `.claude/sett
 
 ### profiles
 
-`scripts/extras.sh on profiles` installs `scripts/set-models.sh` and the repeated-failure counter. Tiers decide which agents run; profiles decide which models and efforts they run on. Pick a profile by what your plan and budget cover and switch with `scripts/set-models.sh <lite|standard|max>`. Record the choice in `docs/decisions.md`.
+`scripts/extras.sh on profiles` installs `scripts/set-models.sh` and the repeated-failure counter. Tiers decide which agents run; profiles decide which models and efforts they run on. Pick a profile by what your plan and budget cover and switch with `scripts/set-models.sh <lite|standard|max>`, unless `docs/decisions.md` records tailored seats (an agent whose model or effort you set by hand): then edit those files yourself. The script refuses to overwrite a seat that is none of the profiles' values for its role (exit 1, nothing changed) and says which; `--force` overrides. Record the choice in `docs/decisions.md`.
 
 | Profile | planner | writer | reviewer | security-auditor | For |
 |---|---|---|---|---|---|
@@ -78,7 +78,7 @@ Switching moves files and changes only the kit's own hook entry in `.claude/sett
 | **standard** (default) | opus/high | sonnet/high | opus/high | opus/xhigh | Any plan with Opus access. |
 | **max** (experimental) | opus/high | opus/medium | fable/high | fable/high | Plans or budgets that include Fable. A hypothesis: there is no comparative Fable-vs-Opus data for reviewing or auditing. |
 
-Why: the model that wrote the code never reviews it, so writer and reviewer are on different models in every profile. The reviewer never runs below `medium` (Opus at `low` scored 34 points below `medium` at finding bugs). Never set Sonnet below `high`: Sonnet 5.5 at `medium` dropped about 7 points on SWE-bench Pro and about 15 (77.8% to 62.7%) on Anthropic's internal agentic-coding benchmark; both are Anthropic's own measurements. On cost (Anthropic's directional figures, API list prices): Sonnet 5.5 `high` solved 87.6% of tasks at $0.11 per solved task, Opus 5.5 `medium` 92.8% at $0.22, so the Sonnet writer in lite and standard costs about half as much per solved task at a lower first-try rate, and the ladder below catches the failures. Full reasoning and sources: [the research report](https://github.com/sam-pop/claude-code-workflow-kit/blob/main/docs/research/coding-agent-model-effort-combos.md).
+Why: the model that wrote the code never reviews it, so writer and reviewer are on different models in every profile. The reviewer never runs below `medium` (Opus at `low` scored 34 points below `medium` at finding bugs). Never set Sonnet below `high`: Sonnet 5.5 at `medium` dropped about 7 points on SWE-bench Pro and about 15 (77.8% to 62.7%) on Anthropic's internal agentic-coding benchmark; both are Anthropic's own measurements. On cost (Anthropic's directional figures, API list prices): Sonnet 5.5 `high` solved 87.6% of tasks at $0.11 per solved task, Opus 5.5 `medium` 92.8% at $0.22, so the Sonnet writer in lite and standard costs about half as much per solved task, at a lower first-try solve rate (87.6% vs 92.8%, Anthropic's measurement). The effort-only ladder below is meant to recover some of that gap, but it is unmeasured for Sonnet. Full reasoning and sources: [the research report](https://github.com/sam-pop/claude-code-workflow-kit/blob/main/docs/research/coding-agent-model-effort-combos.md).
 
 Agents use model aliases, so they move to new model versions automatically. **Fable billing**: on Pro and standard Team plans Fable bills usage credits from the first request. Interactive sessions ask for consent first, but `claude -p` and Agent SDK runs bill **without asking**, and background or Remote sessions drop the turn after 5 minutes waiting for consent. Set a cap in `/usage-credits` before choosing **max**. `scripts/check.sh doctor` warns about settings that silently undo the setup (`CLAUDE_CODE_EFFORT_LEVEL`, forced subagent models, a reviewer on the writer's model).
 
@@ -87,10 +87,10 @@ Agents use model aliases, so they move to new model versions automatically. **Fa
 | Tier | Reviewer `effort` |
 |---|---|
 | Low | `medium` |
-| Medium | `high` (the reviewer's frontmatter default) |
-| High | `xhigh` |
+| Medium | the reviewer's frontmatter effort (`high`; `medium` on lite) |
+| High | `xhigh`, or `high` when the reviewer runs on Fable (max) |
 
-`xhigh` on High risk is a hypothesis: no review-effort ablation exists for Claude. If across 8+ High-risk reviews `xhigh` shows no higher accepted-finding rate than `high`, drop it to `high`. Any escaped defect on a High-risk change: revisit the tier definitions before the costs.
+A Fable reviewer stays at `high` on High risk because Fable lost only about 1.8 points of bug-finding from `high` to `low` (Anthropic's measurement, [the research report](https://github.com/sam-pop/claude-code-workflow-kit/blob/main/docs/research/coding-agent-model-effort-combos.md)): extra effort buys little on the most expensive model. `xhigh` on High risk for an Opus reviewer is a hypothesis: no review-effort ablation exists for Claude. If across 8+ High-risk reviews `xhigh` shows no higher accepted-finding rate than `high`, drop it to `high`. Any escaped defect on a High-risk change: revisit the tier definitions before the costs.
 
 **Writer ladder.** Rung 1 is the writer as defined. Escalate on any of:
 

@@ -80,7 +80,7 @@ for role in planner writer reviewer security-auditor; do
   [[ -f "$f" ]] || continue
   e=$(front "$f" effort)
   if [[ -z "$e" ]]; then
-    warn "$role has no effort: add \`effort:\` to its frontmatter"
+    warn "$role has no effort: add an \`effort:\` line to its frontmatter (or run \`scripts/set-models.sh <profile>\` if the seats are untailored)"
   elif [[ "$e" == max ]]; then
     warn "$role has effort: max; no role defaults to max"
   elif [[ "$role" == reviewer && "$e" == low ]]; then

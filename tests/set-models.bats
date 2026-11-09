@@ -101,3 +101,34 @@ field() { awk -v k="$2:" 'NR>1 && /^---/ {exit} $1==k {print $2}' ".claude/agent
   scripts/set-models.sh standard >/dev/null
   cat .claude/agents/*.md | cmp - "$BATS_TEST_TMPDIR/shipped"
 }
+
+@test "a tailored seat is refused with role, current and target, and no file changes; --force applies; untailored applies (item C)" {
+  scripts/set-models.sh standard >/dev/null
+  # a hand-tailored reviewer: fable at medium is none of the reviewer's profile values
+  sed -i.bak 's/^model: .*/model: fable/; s/^effort: .*/effort: medium/' .claude/agents/reviewer.md && rm .claude/agents/reviewer.md.bak
+  cat .claude/agents/*.md >"$BATS_TEST_TMPDIR/before"
+  run scripts/set-models.sh lite
+  assert_failure 1
+  assert_output --partial "refused: reviewer is fable/medium"
+  assert_output --partial "would set it to opus/medium"
+  assert_output --partial "--force"
+  cat .claude/agents/*.md >"$BATS_TEST_TMPDIR/after"
+  cmp "$BATS_TEST_TMPDIR/before" "$BATS_TEST_TMPDIR/after"
+  run scripts/set-models.sh lite --force
+  assert_success
+  assert_equal "$(field reviewer model)/$(field reviewer effort)" opus/medium
+  # an untailored seat (a value of another profile) is switched without --force
+  run scripts/set-models.sh max
+  assert_success
+  assert_equal "$(field reviewer model)/$(field reviewer effort)" fable/high
+  run scripts/set-models.sh standard
+  assert_success
+  assert_equal "$(field writer model)/$(field writer effort)" sonnet/high
+}
+
+@test "a legacy seat with a profile model and no effort: line is not tailored (item C)" {
+  sed -i.bak '/^effort:/d' .claude/agents/writer.md && rm .claude/agents/writer.md.bak
+  run scripts/set-models.sh standard
+  assert_success
+  assert_equal "$(field writer effort)" high
+}

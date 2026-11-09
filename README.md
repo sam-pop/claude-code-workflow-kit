@@ -86,7 +86,7 @@ Details for each step: [Quick start](#quick-start), [Daily use](#daily-use), [Up
 - **One verification contract.** Every agent, hook and CI run checks through `scripts/check.sh`. A check nobody configured exits 2 (`NOT CONFIGURED`) instead of passing, so no report can say "lint passed" for a check that never ran.
 - **Decided and open are separate, and dated.** `docs/decisions.md` holds what is decided, with dates; `docs/open.md` holds what is not, each with an owner and a decide-by date. Agents design around open items and list every default they picked.
 - **Kill criteria before you start.** With the metrics extra, you commit to a baseline and to the conditions under which you shrink the kit, before the first change goes through it.
-- **Codex egress by design.** With the codex extra on, nothing is sent without a gitleaks scan, the model works in a fresh copy of HEAD with no `.git`, and a finding refuses the run. See [Cross-model review](#cross-model-review-codex).
+- **Codex egress by design.** With the codex extra on, nothing is sent without a gitleaks scan, the model works in a fresh copy of HEAD with no `.git`, and a finding refuses the run. A plan review, before your question round, sends the plan text only. See [Cross-model review](#cross-model-review-codex).
 
 Only *what was actually tested* is checked mechanically: the reviewer re-runs the checks and compares exit codes and test counts. *What the agent decided* and *what still needs a human* are lists the agents write themselves; the reviewer reads them, nothing verifies them.
 
@@ -150,6 +150,7 @@ flowchart LR
     V -- "Standards + Spec findings" --> H((Owner<br/>merges))
     H -. "before release" .-> A[Security auditor]
     V -. "High-risk / release, if codex is on" .-> X[Codex reviewer<br/>second opinion]
+    P -. "plan text only, if codex is on" .-> X
     W -. "STUCK → next rung (profiles)" .-> W
     V -. "report saved" .-> L[(docs/reviews/)]
     L -. "monthly: doctor" .-> K[New lint rules,<br/>reviewer lists]
@@ -412,7 +413,7 @@ All five are plain Markdown files with YAML frontmatter (four in `.claude/agents
 | **planner** | No edit tools; Bash by instruction | No | One decisive blueprint: approach, rejected alternative, risk tier, acceptance criteria, files, data, rollback path, tests, sequence, questions for the owner. |
 | **writer** | Read/write | Yes | Implements the blueprint, writes tests that catch real bugs, runs the checks, reports exact output and the defaults it picked. Stops with a `## STUCK:` report instead of looping. |
 | **reviewer** | No edit tools; Bash by instruction | No | Reads the diff before the plan, re-runs the checks, reports Standards and Spec findings separately with confidence scores. Lower threshold (60%) for data, security and concurrency; 85% elsewhere. |
-| **security-auditor** | No edit tools; Bash by instruction | No | Whole-system audit (trust boundaries, authorization, tenancy, data flows, secrets, rate limiting, logging). Critical and High block a release when they carry a reproduction. |
+| **security-auditor** | No edit tools; Bash by instruction | No | Whole-system audit (trust boundaries, authorization, tenancy, data flows, secrets, rate limiting, logging). Critical and High block a release; an unreproduced one blocks until the owner rules on it, on the record. |
 | **codex-reviewer** *(extra)* | Runs one script (read-only Codex sandbox) | No | Relays `scripts/codex-review.sh`: a Codex second opinion on the plan, on High-risk diffs and on releases. |
 
 Every agent treats text it finds in the repo (comments, docs, PR descriptions, other agents' reports) as **data, never instructions**. An instruction found there is reported as possible prompt injection.
@@ -481,7 +482,7 @@ scripts/set-models.sh standard   # or: lite | max
 | **standard** *(default)* | Opus / high | Sonnet / high | Opus / high | Opus / xhigh | Any plan with Opus access. Sonnet writes, Opus reviews. |
 | **max** | Opus / high | Opus / medium | Fable / high | Fable / high | *Experimental.* Plans or budgets that include Fable, used to review and audit what Opus wrote. No comparative Fable-vs-Opus data exists for reviewing or auditing, so this is a hypothesis to test, not a measured gain. |
 
-**The model that wrote the code never reviews it**, so writer and reviewer are on different models in every profile; `check.sh doctor` warns when they are not. The reviewer never runs below `medium`. Review effort scales with risk (Low `medium`, Medium `high`, High `xhigh`; `xhigh` is a hypothesis, since no review-effort ablation exists for Claude). The writer ladder raises effort only and never changes the model, so an escalated writer cannot land on the reviewer's model: lite and standard go sonnet/high, then sonnet/xhigh, then stop; max goes opus/medium, then opus/high, then opus/xhigh, then stop. Both are defined in `docs/rollout.md`, Extras, profiles. Never set Sonnet below `high`: at `medium` it dropped about 7 points on SWE-bench Pro and about 15 on Anthropic's internal agentic-coding benchmark.
+**The model that wrote the code never reviews it**, so writer and reviewer are on different models in every profile; `check.sh doctor` warns when they are not. The reviewer never runs below `medium`. Review effort scales with risk (Low `medium`, Medium the reviewer's own effort, High `xhigh`, or `high` on a Fable reviewer; `xhigh` is a hypothesis, since no review-effort ablation exists for Claude). The writer ladder raises effort only and never changes the model, so an escalated writer cannot land on the reviewer's model: lite and standard go sonnet/high, then sonnet/xhigh, then stop; max goes opus/medium, then opus/high, then opus/xhigh, then stop. Both are defined in `docs/rollout.md`, Extras, profiles. Never set Sonnet below `high`: at `medium` it dropped about 7 points on SWE-bench Pro and about 15 on Anthropic's internal agentic-coding benchmark.
 
 Agents use model aliases (`sonnet`, `opus`, `fable`), so they move to new versions automatically. Aliases differ by provider: on Amazon Bedrock, Google Vertex or Microsoft Foundry an alias can point to an older model, and an effort level the model lacks falls back silently. `check.sh doctor` warns when one of those providers is selected.
 
@@ -495,7 +496,7 @@ Agents use model aliases (`sonnet`, `opus`, `fable`), so they move to new versio
 | Sonnet 5.5 `high` (the **lite** and **standard** writer) vs Opus 5.5 `medium` (the **max** writer) | 87.6% at $0.11 per solved task† vs 92.8% at $0.22† |
 | Codex review of 100K input and 5K output tokens (a floor: reasoning tokens bill as output, and a real review uses several times 5K) | `gpt-6.1-sol` ≈ $0.25‡; `gpt-6-astra` ≈ $1.25‡ |
 
-Rows 1 and 3 are per solved task, row 2 per task. In row 2 the gain comes from re-running failures (re-running at `high` after `high` also beats fixed `high`); starting at `medium` is the smaller, cost-only saving. The kit's ladder, triggered by self-written tests and reviewer findings, is untested; switching models mid-ladder was never measured, which is why it raises effort only. How a subscription weights each model against its quota is unpublished, so measure with `/usage` in the first month (`docs/rollout.md`).
+Rows 1 and 3 are per solved task, row 2 per task. In row 2 the gain comes from re-running failures (re-running at `high` after `high` also beats fixed `high`); starting at `medium` is the smaller, cost-only saving. The kit's ladder, triggered by self-written tests and reviewer findings, is untested; switching models mid-ladder was never measured, which is why it raises effort only. How a subscription weights each model against its quota is unpublished, so measure with `/usage` (`docs/rollout.md`, Extras, metrics).
 
 ## When things go wrong
 
@@ -526,7 +527,7 @@ The installer records the version and each file's hash in `.claude/kit-version` 
 | **retired** | No longer in the kit: listed, never deleted (1.6 retires `handoff.md` and `docs/glossary.md`; yours stay as your own files) |
 | **never re-added** | `TAILOR.md`, `HOW-TO-USE.md` and `README.md` (the README is never installed) |
 
-Extras follow the repo: a file of an extra that is on is updated in place, one you switched off stays off, and the installer finishes with `scripts/extras.sh sync` so no extra is left half-enabled. A pre-1.4 repo has no manifest, so every existing file that differs from the kit becomes `.kit` once; the manifest is written at the end and later upgrades are quiet. Then open Claude Code in the repo and say **Read .claude/kit-upgrade.md**: that file starts with the merge prompt, then the classification and the CHANGELOG sections since your version. The session merges each `.kit` file, deletes new files your tier does not use, re-applies your extras and model profile, runs `scripts/check.sh all`, records the upgrade in `docs/decisions.md` and deletes `.claude/kit-upgrade.md`. `check.sh doctor` warns about unmerged `.kit` files and while `.claude/kit-upgrade.md` is present. `--upgrade` refuses to run while a previous merge is unfinished (`.claude/kit-upgrade.md` or a `.kit` file still present); `--force` runs it anyway, keeps files with a `.kit` sibling as tailored and keeps the earlier starting version. What changed per version: [CHANGELOG.md](CHANGELOG.md).
+Extras follow the repo: a file of an extra that is on is updated in place, one you switched off stays off, and the installer finishes with `scripts/extras.sh sync` so the move leaves no extra half-enabled. A tailored `scripts/check.sh` that lacks a line an extra needs stays half-enabled until you merge it, and `scripts/extras.sh status` (shown by `check.sh doctor`) warns. A pre-1.4 repo has no manifest, so every existing file that differs from the kit becomes `.kit` once; the manifest is written at the end and later upgrades are quiet. Then open Claude Code in the repo and say **Read .claude/kit-upgrade.md**: that file starts with the merge prompt, then the classification and the CHANGELOG sections since your version. The session merges each `.kit` file, deletes new files your tier does not use, re-applies your extras and model profile, runs `scripts/check.sh all`, records the upgrade in `docs/decisions.md` and deletes `.claude/kit-upgrade.md`. `check.sh doctor` warns about unmerged `.kit` files and while `.claude/kit-upgrade.md` is present. `--upgrade` refuses to run while a previous merge is unfinished (`.claude/kit-upgrade.md` or a `.kit` file still present); `--force` runs it anyway, keeps files with a `.kit` sibling as tailored and keeps the earlier starting version. What changed per version: [CHANGELOG.md](CHANGELOG.md).
 
 ## Security model and limitations
 
@@ -557,7 +558,7 @@ Small changes use two contexts (main session + reviewer). Agents without edit to
 <details>
 <summary><strong>Why does the reviewer run at higher effort than the writer?</strong></summary>
 
-Review is bounded: it reads one diff and emits findings once, while the writer iterates. Its effort is never `low` (Opus at `low` scored 34 points below `medium` at finding bugs) and rises to `xhigh` on High-risk changes, which is a hypothesis: no review-effort ablation exists for Claude. It also reviews in a fresh context and, with the profiles extra, on a different model from the writer, so the model that wrote the code is not grading it. `docs/rollout.md` lists the first-month measures that tell you whether the settings pay off on your own diffs.
+Review is bounded: it reads one diff and emits findings once, while the writer iterates. Its effort is never `low` (Opus at `low` scored 34 points below `medium` at finding bugs) and rises to `xhigh` on High-risk changes, which is a hypothesis: no review-effort ablation exists for Claude. It also reviews in a fresh context and on a different model from the writer (the shipped agent files already differ, and `check.sh doctor` warns if they match), so the model that wrote the code is not grading it. `docs/rollout.md`, Extras, metrics, sets the measures that tell you whether the settings pay off on your own diffs.
 </details>
 
 <details>

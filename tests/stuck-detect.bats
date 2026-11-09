@@ -137,3 +137,15 @@ PY
   assert_output --partial "boom"
   [[ ! -e "$(failures)" ]]
 }
+
+@test "a kit state directory that cannot be written prints no traceback and keeps check.sh's exit code (item 10)" {
+  extras_on profiles
+  : >"$(git rev-parse --git-path kit)"
+  run --separate-stderr env FAIL=1 scripts/check.sh test
+  assert_failure 1
+  refute_output --partial "Traceback"
+  [[ "$stderr" != *Traceback* ]] || fail "stderr: $stderr"
+  run env FAIL=1 scripts/check.sh test
+  assert_failure 1
+  refute_output --partial "Traceback"
+}

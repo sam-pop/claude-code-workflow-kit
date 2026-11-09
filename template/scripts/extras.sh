@@ -19,10 +19,11 @@
 # when it is there. Files are moved, never deleted, so edits to them survive. Only the kit's own hook
 # entry in .claude/settings.json is added or removed: the rest of the file is kept, but re-written with
 # 2-space indentation. A tailored scripts/check.sh is never edited; status warns about a missing line.
-# Environment: CLAUDE_PROJECT_DIR, the repo (default: this script's parent directory).
+# Environment: KIT_EXTRAS_REPO, the repo to act on (default: this script's parent directory). scripts/install.sh
+# sets it to run the kit's copy of this script against a target; CLAUDE_PROJECT_DIR is for hooks and is ignored.
 # Exit codes: 0 ok (status: no warnings), 1 refused or failed (status: warnings), 2 usage or unknown extra.
 set -uo pipefail
-cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/..}" || exit 1
+cd "${KIT_EXTRAS_REPO:-$(dirname "$0")/..}" || exit 1
 EXTRAS="codex profiles stop-warning verify-review metrics"
 SETTINGS=.claude/settings.json
 

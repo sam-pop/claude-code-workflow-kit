@@ -280,3 +280,18 @@ PY
   run scripts/check-stamp.sh
   assert_failure 2
 }
+
+@test "an unreadable changed file does not make tree fail: it counts as changed and the id moves when it does (item 11)" {
+  [[ "$(id -u)" != 0 ]] || skip "root reads any file; run the suite as a normal user"
+  base=$(scripts/check-stamp.sh tree)
+  echo secret >locked.txt && chmod 000 locked.txt
+  run scripts/check-stamp.sh tree
+  assert_success
+  [[ "$output" =~ ^[0-9a-f]{64}$ ]]
+  [[ "$output" != "$base" ]]
+  first=$output
+  chmod 600 locked.txt && echo more >>locked.txt && chmod 000 locked.txt
+  run scripts/check-stamp.sh tree
+  assert_success
+  [[ "$output" != "$first" ]]
+}

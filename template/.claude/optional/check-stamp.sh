@@ -92,8 +92,13 @@ def scan():
         elif S.S_ISREG(st.st_mode):
             if xy == "??" and st.st_size > LIMIT:
                 continue
-            with open(path, "rb") as f:
-                data = f.read()
+            try:
+                with open(path, "rb") as f:
+                    data = f.read()
+            except OSError:
+                # unreadable or gone since lstat: still changed; size and mtime stand in for its content
+                files[path] = f"100644 unreadable-{st.st_size}-{st.st_mtime_ns}"
+                continue
             files[path] = ("100755 " if st.st_mode & 0o111 else "100644 ") + blob(data)
     for p in [p for p in files if skipped(p)]:
         del files[p]

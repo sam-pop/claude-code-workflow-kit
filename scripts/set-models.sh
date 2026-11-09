@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Switch every agent to a model profile.
-# Usage: scripts/set-models.sh <lite|standard|max>   (profiles extra: scripts/extras.sh on profiles)
+# Usage: scripts/set-models.sh <lite|standard|max> [--force]   (profiles extra: scripts/extras.sh on profiles)
 #
 #             planner      writer        reviewer     security-auditor
 #   lite      sonnet/high  sonnet/high   opus/medium  opus/high
@@ -11,9 +11,11 @@
 #   lite is for Pro ($20) plans; never set Sonnet below high (medium: -7 to -15 points). max is experimental.
 #   Cross-model review (Codex) is its own extra: scripts/extras.sh on codex
 #
-# max is a hypothesis, not a measured gain: no comparative Fable-vs-Opus data exists for planning or
+# max is a hypothesis, not a measured gain: no comparative Fable-vs-Opus data exists for reviewing or
 # security auditing (only within-model effort deltas), and Fable barely gains from effort.
-# Exit codes: 0 ok, 1 run from .claude/optional/ (the extra is off), 2 usage (--cross included).
+# A seat whose model/effort is none of the profiles' values for that role was tailored by hand: the script
+# refuses to overwrite it (exit 1, no file changed) and says role, current and target; --force overrides.
+# Exit codes: 0 ok, 1 run from .claude/optional/ (the extra is off) or a tailored seat refused, 2 usage (--cross included).
 # Each line is model/effort. Aliases track the latest model of each family. Fable bills usage credits on
 # some plans; interactive sessions ask first, `claude -p` and SDK runs do not (see docs/rollout.md).
 # The writer's effort is the first rung of the escalation ladder, which raises effort only and never
@@ -30,8 +32,10 @@ case "$(basename "$(cd "$(dirname "$0")" && pwd)")" in
 esac
 cd "$(dirname "$0")/.."
 profile=""
+force=0
 for a in "$@"; do
   case "$a" in
+    --force) force=1 ;;
     lite | standard | max)
       [[ -z "$profile" ]] || {
         sed -n '2,12p' "$0"
@@ -73,6 +77,45 @@ case "$profile" in
     exit 2
     ;;
 esac
+
+# Prints "<model>/<effort>" when the seat in agent file $1 (role $2) is none of the profiles' values for
+# that role: a hand-tailored seat. A missing effort: line passes when the model is one a profile uses.
+tailored_seat() {
+  [[ -f "$1" ]] || return 0
+  python3 - "$1" "$2" <<'PY'
+import re, sys
+path, role = sys.argv[1:3]
+pairs = {
+    "planner": ["sonnet/high", "opus/high"],
+    "writer": ["sonnet/high", "opus/medium"],
+    "reviewer": ["opus/medium", "opus/high", "fable/high"],
+    "security-auditor": ["opus/high", "opus/xhigh", "fable/high"],
+}[role]
+head = open(path, encoding="utf-8", newline="").read().replace("\r\n", "\n").partition("\n---\n")[0]
+m = re.search(r"^model:[ \t]*(\S+)", head, re.M)
+if not m:
+    sys.exit(0)
+e = re.search(r"^effort:[ \t]*(\S+)", head, re.M)
+model, effort = m.group(1), e.group(1) if e else None
+if effort is None:
+    ok = model in [p.split("/")[0] for p in pairs]
+else:
+    ok = model + "/" + effort in pairs
+if not ok:
+    print(model + "/" + (effort or "none"))
+PY
+}
+
+refused=0
+for pair in "planner:$planner" "writer:$writer" "reviewer:$reviewer" "security-auditor:$auditor"; do
+  role=${pair%%:*}
+  cur=$(tailored_seat ".claude/agents/$role.md" "$role") || cur=""
+  if [[ -n "$cur" && $force -eq 0 ]]; then
+    echo "refused: $role is $cur, none of the profiles' values for that role (a tailored seat); $profile would set it to ${pair#*:}. Run again with --force to overwrite it." >&2
+    refused=1
+  fi
+done
+((refused == 0)) || exit 1
 
 set_model() { # file model/effort
   [[ -f "$1" ]] || return 0

@@ -3,14 +3,16 @@
 # Usage: scripts/codex-review.sh <high [base] | release [from-ref] | plan <file> | guard>
 #   high [base]       the working tree against the merge-base with <base> (default: the base branch)
 #   release [from]    from <from-ref> (default: the latest tag) to HEAD
-#   plan <file>       a planner's blueprint saved at <file> (a relative path inside the repo): only its
-#                     text is sent, with a short plan-review brief; no repository files, no diff
+#   plan <file>       a planner's blueprint saved at <file> (a relative *.md path inside the repo, not
+#                     git-ignored, not a secrets file such as .env or *.pem): only its text is sent, with
+#                     a short plan-review brief; no repository files, no diff
 #   guard             PreToolUse hook of the codex-reviewer agent: reads the hook JSON on stdin and
 #                     allows only `scripts/codex-review.sh high|release [ref]` and `plan <file>`
 # Exit codes: 0 ok (or nothing to review), 1 codex failed, 2 usage, an untrusted base, or a plan file
-#             that is missing or outside the repo, 3 not enabled,
+#             that is missing, outside the repo or not *.md, 3 not enabled,
 #             codex not installed or gitleaks not installed, 4 diff too large, 5 refused: secrets or a
-#             sensitive file in what Codex would read, or the review tooling itself changed in the range.
+#             sensitive file in what Codex would read (a plan that is a secrets file or git-ignored
+#             included), or the review tooling itself changed in the range.
 # Environment: BASE_BRANCH (default: origin/HEAD, else main).
 #
 # Pinned (Nov 2026; sources: docs/rollout.md, Extras, codex):
@@ -141,14 +143,15 @@ guard() {
 import json, re, sys
 pre = r"^(bash )?(\./|\"?\$\{?CLAUDE_PROJECT_DIR\}?\"?/)?scripts/codex-review\.sh\"? "
 ok = pre + r"(high|release)( [A-Za-z0-9._/~^@][A-Za-z0-9._/~^@-]*)?$"
-plan = pre + r"plan (?P<file>[A-Za-z0-9_][A-Za-z0-9._/-]*)$"
+plan = pre + r"plan (?P<file>[A-Za-z0-9_][A-Za-z0-9._/-]*\.md)$"
+sensitive = r"(^|/)\.env(\.[^/]+)?$|\.pem$|\.p12$|(^|/)id_(rsa|ed25519)$"
 try:
     cmd = (json.load(sys.stdin).get("tool_input") or {}).get("command") or ""
 except Exception:
     sys.exit(2)
 cmd = cmd.strip()
 m = re.fullmatch(plan, cmd)
-if m and ".." not in m.group("file").split("/") and "//" not in m.group("file"):
+if m and ".." not in m.group("file").split("/") and "//" not in m.group("file") and not re.search(sensitive, m.group("file")):
     sys.exit(0)
 if not re.fullmatch(ok, cmd):
     sys.exit(2)
@@ -166,6 +169,14 @@ plan_review() {
     echo "codex-review: plan needs a relative path inside the repo, without .. (got: $(safe_name <<<"$file"))" >&2
     return 2
   fi
+  if grep -qE "$SENSITIVE_RE" <<<"$file"; then
+    echo "codex-review: refused: $(safe_name <<<"$file") looks like a secrets file; a plan is a Markdown file" >&2
+    return 5
+  fi
+  if [[ "$file" != *.md ]]; then
+    echo "codex-review: a plan is a Markdown file (*.md), got $(safe_name <<<"$file")" >&2
+    return 2
+  fi
   if [[ ! -f "$file" || -L "$file" ]]; then
     echo "codex-review: no plan file at $(safe_name <<<"$file")" >&2
     return 2
@@ -175,6 +186,11 @@ r, t = os.path.realpath(sys.argv[1]), os.path.realpath(".")
 sys.exit(0 if r.startswith(t + os.sep) else 1)' "$file"; then
     echo "codex-review: the plan file resolves outside the repo (a symlink on the way?)" >&2
     return 2
+  fi
+  # A git-ignored file (or one under an ignored directory) is kept out of what Codex sees everywhere else.
+  if git check-ignore -q -- "$file" 2>/dev/null; then
+    echo "codex-review: refused: $(safe_name <<<"$file") is git-ignored; move the plan to a tracked or untracked, non-ignored path" >&2
+    return 5
   fi
   base="$BASE_BRANCH"
   git show-ref --verify --quiet "refs/remotes/origin/$base" && base="origin/$base"

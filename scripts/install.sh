@@ -323,7 +323,7 @@ PY
 [[ "$DRY" == 1 ]] && exit 0
 if [[ "$MODE" == upgrade && -f "$TPL/scripts/extras.sh" ]]; then
   # The kit's copy, never the target's: an extra on in the repo gets its other files and its hook.
-  CLAUDE_PROJECT_DIR="$TARGET" bash "$TPL/scripts/extras.sh" sync \
+  KIT_EXTRAS_REPO="$TARGET" bash "$TPL/scripts/extras.sh" sync \
     || echo "warn: scripts/extras.sh sync did not finish; run scripts/extras.sh status in $TARGET" >&2
 fi
 echo

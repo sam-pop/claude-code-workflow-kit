@@ -227,3 +227,10 @@ PY2
   assert_success
   assert_output --partial "warn: reviewer and writer both use model: opus: the reviewer runs on the writer's model; it reviews its own family's code"
 }
+
+@test "a missing effort: line is warned about and the message names both fixes (item C)" {
+  tailor
+  sed -i.bak '/^effort:/d' .claude/agents/security-auditor.md && rm -f .claude/agents/*.bak
+  run scripts/check.sh doctor
+  assert_output --partial "warn: security-auditor has no effort: add an \`effort:\` line to its frontmatter (or run \`scripts/set-models.sh <profile>\` if the seats are untailored)"
+}

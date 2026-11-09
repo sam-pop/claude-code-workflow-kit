@@ -151,7 +151,7 @@ PY
   mv scripts "$out"
   ln -s "$out" scripts
   before=$(cd "$out" && ls)
-  run env CLAUDE_PROJECT_DIR="$TARGET" bash "$out/extras.sh" on profiles
+  run env KIT_EXTRAS_REPO="$TARGET" bash "$out/extras.sh" on profiles
   assert_failure 1
   assert_output --partial "scripts/set-models.sh resolves outside the repo"
   assert_equal "$(cd "$out" && ls)" "$before"
@@ -199,6 +199,42 @@ PY
   assert_output --partial "has a Stop hook for scripts/check-stamp.sh but stop-warning is off"
 }
 
+@test "status warns (exit 1) when a non-primary file disagrees with the primary: on:off, off:on and on:none (review item 1)" {
+  # profiles is on (set-models.sh active) but stuck-detect.sh is still dormant: on:off
+  bash scripts/extras.sh on profiles >/dev/null
+  run bash scripts/extras.sh status
+  assert_success
+  mv scripts/stuck-detect.sh .claude/optional/stuck-detect.sh
+  run bash scripts/extras.sh status
+  assert_failure 1
+  assert_output --partial "warn: profiles is on but .claude/optional/stuck-detect.sh is still off"
+  # the file is gone from both places: on:none
+  rm .claude/optional/stuck-detect.sh
+  run bash scripts/extras.sh status
+  assert_failure 1
+  assert_output --partial "warn: profiles is on but scripts/stuck-detect.sh is missing"
+  # profiles is off (set-models.sh dormant) but stuck-detect.sh is active: off:on
+  git reset -q --hard && git clean -fdq
+  mv .claude/optional/stuck-detect.sh scripts/stuck-detect.sh
+  [[ -f .claude/optional/set-models.sh ]]
+  run bash scripts/extras.sh status
+  assert_failure 1
+  assert_output --partial "warn: profiles is off but scripts/stuck-detect.sh is on"
+}
+
+@test "sync moves a non-primary file back to dormant when the primary is dormant, then status is clean (review item 1)" {
+  mv .claude/optional/stuck-detect.sh scripts/stuck-detect.sh
+  [[ -f .claude/optional/set-models.sh ]]
+  run bash scripts/extras.sh status
+  assert_failure 1
+  run bash scripts/extras.sh sync
+  assert_success
+  assert_output --partial "moved: scripts/stuck-detect.sh -> .claude/optional/stuck-detect.sh"
+  [[ -f .claude/optional/stuck-detect.sh && ! -e scripts/stuck-detect.sh ]]
+  run bash scripts/extras.sh status
+  assert_success
+}
+
 @test "sync adds the hook of an extra whose file is on, and removes a hook whose script was deleted" {
   mv .claude/optional/check-stamp.sh scripts/check-stamp.sh
   run bash scripts/extras.sh sync
@@ -231,4 +267,17 @@ PY
   bash scripts/extras.sh on stop-warning >/dev/null
   perm=$(stat -c %a .claude/settings.json 2>/dev/null || stat -f %Lp .claude/settings.json)
   assert_equal "$perm" 600
+}
+
+@test "CLAUDE_PROJECT_DIR (reserved for hooks) is ignored: extras.sh acts on its own repo; KIT_EXTRAS_REPO selects another (item 12)" {
+  other="$BATS_TEST_TMPDIR/other"
+  mkdir -p "$other/.claude/optional"
+  run env CLAUDE_PROJECT_DIR="$other" bash scripts/extras.sh status
+  assert_success
+  assert_line "profiles: off"
+  run env CLAUDE_PROJECT_DIR="$other" bash scripts/extras.sh on metrics
+  assert_success
+  [[ -f scripts/review-stats.sh && ! -e .claude/optional/review-stats.sh ]]
+  run env KIT_EXTRAS_REPO="$other" bash scripts/extras.sh status
+  assert_line "metrics: not installed"
 }

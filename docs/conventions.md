@@ -13,7 +13,7 @@ Status: ADOPTED. This is the one file the planner, writer and reviewer cite. Eve
 
 ## Configuration
 
-- Scripts read environment variables only where their header documents them (`BASE_BRANCH`, `DOCTOR_SKIP_PATHS`, `CLAUDE_PROJECT_DIR`). No secrets anywhere in the kit.
+- Scripts read environment variables only where their header documents them (`BASE_BRANCH`, `DOCTOR_SKIP_PATHS`, `KIT_EXTRAS_REPO`, `KIT_STUCK_INNER`, `CLAUDE_PROJECT_DIR` for hooks). No secrets anywhere in the kit.
 
 ## Errors
 

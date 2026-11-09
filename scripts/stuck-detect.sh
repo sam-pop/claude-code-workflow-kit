@@ -31,7 +31,7 @@ trap 'rm -f "$out"' EXIT
 KIT_STUCK_INNER=1 bash scripts/check.sh "$@" 2>&1 | tee "$out"
 rc=${PIPESTATUS[0]}
 
-python3 - "$state" "$rc" "$out" "$*" <<'PY' || true
+python3 - "$state" "$rc" "$out" "$*" 2>/dev/null <<'PY' || true
 import hashlib, os, re, sys, tempfile
 state, rc, out, args = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
 args = re.sub(r"[\t\r\n]", " ", args) or "(none)"
@@ -67,12 +67,15 @@ else:
     n = old[1] + 1 if old and old[0] == h else 1
     rows[args] = (h, n)
 d = os.path.dirname(state)
-os.makedirs(d, exist_ok=True)
-fd, tmp = tempfile.mkstemp(dir=d, prefix=".failures.")
-with os.fdopen(fd, "w", encoding="utf-8") as f:
-    for k in sorted(rows):
-        f.write(f"{k}\t{rows[k][0]}\t{rows[k][1]}\n")
-os.replace(tmp, state)
+try:
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".failures.")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        for k in sorted(rows):
+            f.write(f"{k}\t{rows[k][0]}\t{rows[k][1]}\n")
+    os.replace(tmp, state)
+except OSError:
+    sys.exit(0)  # a state directory that cannot be written: no count, no noise
 if n >= 3:
     print(f"same failure {n} times: {args}")
 PY
