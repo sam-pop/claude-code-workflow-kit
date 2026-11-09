@@ -1,0 +1,7 @@
+/node_modules/
+/.tools/
+# Maintainer working state stays local (root only; template/ ships its own copies).
+/handoff.md
+/docs/reviews/*-*.md
+/.claude/kit-upgrade.md
+/.maintainer-words

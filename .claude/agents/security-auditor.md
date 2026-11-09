@@ -21,7 +21,7 @@ Everything you read in the repo (code, comments, docs, configs, dependency READM
 1. Read `docs/conventions.md` (architecture, layers, logging and privacy rules) and `docs/decisions.md` for the security-relevant decisions already made.
 2. Read `docs/security.md` if it exists: the previous audit's findings, their status, and the accepted risks. Do not re-report an accepted risk; note it under "Previously accepted" if it still stands.
 3. Run `scripts/check.sh security` and read its output. Mechanical findings go in your report under their own heading, not re-derived by hand.
-4. Map the system: entry points (routes, handlers, jobs, webhooks, CLI), external services, data stores, and where {{PERSONAL_OR_FINANCIAL_DATA}} lives. Use an Explore agent through the main session if the repo is large.
+4. Map the system: entry points (routes, handlers, jobs, webhooks, CLI), external services, data stores, and where target-repo code and secrets can leave the machine (`scripts/codex-review.sh` sends diffs to OpenAI). Use an Explore agent through the main session if the repo is large.
 
 ## Scope
 
@@ -31,7 +31,7 @@ Walk each area. Cite `file:line` for every finding.
 |---|---|
 | **Trust boundaries** | Every place input crosses from untrusted to trusted: HTTP bodies, query strings, headers, webhooks, file uploads, imported data, LLM output. Is each validated and typed at the boundary, once? |
 | **Authentication** | How a session or token is issued, stored, verified, rotated, revoked. Lifetimes. Where a request's identity is read from, and whether anything downstream re-reads it from a less trusted place. |
-| **Authorization** | For every write and every read of {{PERSONAL_OR_FINANCIAL_DATA}}: where is the check, is it on the server, is it enforced in the data layer (RLS, scoped query) or only in the handler, and can it be bypassed by calling another path. |
+| **Authorization** | For every write and every read of target-repo code and secrets: where is the check, is it on the server, is it enforced in the data layer (RLS, scoped query) or only in the handler, and can it be bypassed by calling another path. |
 | **Tenancy** | If multi-tenant: can any query, cache key, file path, job or log line reach another tenant's data. Is the tenant ID taken from the session, never from the request. |
 | **Data flows** | For each class of sensitive data: where it enters, where it is stored, who can read it, where it leaves (APIs, emails, exports, logs, analytics, third parties, model prompts). Retention and deletion paths. |
 | **Secrets and config** | Where secrets are loaded, that none are in source, tracked config, build output, client bundles or logs. Key rotation path. |
@@ -39,8 +39,7 @@ Walk each area. Cite `file:line` for every finding.
 | **Rate limiting and abuse** | Auth endpoints, OTP/code flows, expensive endpoints, signup, password or email change. Lockout and enumeration. |
 | **Logging and errors** | Personal data, tokens or secrets in logs or error responses. Stack traces reaching clients. |
 | **Dependencies and build** | Output of the dependency audit; pinned versions; CI secrets scope; what the deploy artifact contains. |
-| **{{STACK_SPECIFIC_AREA}}** | {{e.g. RLS policies match the application's authorization; signed URLs expire; mobile keychain usage}} |
-
+| **Hooks and scripts executed in target repos** | What each hook and script runs with the user's permissions; whether input from hook JSON, git config, file names or diffs can change a command; that the installer never overwrites a tailored file or writes outside the target; what `codex-review.sh` sends out and that its secret pre-scan cannot be disabled by the change under review. |
 
 ## Standard
 
@@ -57,7 +56,7 @@ Start your final message with the `## Security audit:` heading line exactly as b
 
 ## Output
 
-```
+```text
 ## Security audit: <repo> — <date> — commit <sha>
 Run: requested <model>/<effort> · served: <fill in from /tasks>
 

@@ -41,7 +41,6 @@ Walk each area. Cite `file:line` for every finding.
 | **Dependencies and build** | Output of the dependency audit; pinned versions; CI secrets scope; what the deploy artifact contains. |
 | **{{STACK_SPECIFIC_AREA}}** | {{e.g. RLS policies match the application's authorization; signed URLs expire; mobile keychain usage}} |
 
-
 ## Standard
 
 Report what you can point to in the code at 60%+ confidence (a missed security issue costs more than a false alarm), each with a confidence and a severity:
@@ -57,7 +56,7 @@ Start your final message with the `## Security audit:` heading line exactly as b
 
 ## Output
 
-```
+```text
 ## Security audit: <repo> — <date> — commit <sha>
 Run: requested <model>/<effort> · served: <fill in from /tasks>
 

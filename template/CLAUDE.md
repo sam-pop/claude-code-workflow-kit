@@ -80,7 +80,7 @@ Name the rung and the trigger in each writer and reviewer prompt.
 ## Recording
 
 - Decisions → `docs/decisions.md`, dated.
-- Open items → `docs/open.md`, with an ID (`O1`…), an opened date, a decide-by date and an owner.
+- Open items → `docs/open.md`, with an ID (`Oxx`), an opened date, a decide-by date and an owner.
 - Terms → `docs/glossary.md`, when a term has been explained twice.
 - Status, next steps, questions → `handoff.md`, rewritten at the end of every session. It holds no secrets, credentials or customer data.
 - {{PRIVACY_RULE, if any: e.g. "Tracked files hold no customer names, keys or sample data."}}

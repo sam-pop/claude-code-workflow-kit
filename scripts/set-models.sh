@@ -15,29 +15,59 @@
 # The writer's effort is the first rung of the escalation ladder in CLAUDE.md (Workflow).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-profile=""; cross=0
+profile=""
+cross=0
 for a in "$@"; do
   case "$a" in
-    lite|standard|max) [[ -z "$profile" ]] || { sed -n '2,11p' "$0"; exit 2; }; profile="$a" ;;
+    lite | standard | max)
+      [[ -z "$profile" ]] || {
+        sed -n '2,11p' "$0"
+        exit 2
+      }
+      profile="$a"
+      ;;
     --cross) cross=1 ;;
-    *) sed -n '2,11p' "$0"; exit 2 ;;
+    *)
+      sed -n '2,11p' "$0"
+      exit 2
+      ;;
   esac
 done
 case "$profile" in
-  lite)     planner=sonnet/high; writer=sonnet/high;  reviewer=sonnet/high; auditor=opus/high ;;
-  standard) planner=opus/high;  writer=opus/medium; reviewer=opus/high; auditor=opus/xhigh ;;
-  max)      planner=fable/high; writer=opus/medium; reviewer=opus/high; auditor=fable/high ;;
-  *) sed -n '2,11p' "$0"; exit 2 ;;
+  lite)
+    planner=sonnet/high
+    writer=sonnet/high
+    reviewer=sonnet/high
+    auditor=opus/high
+    ;;
+  standard)
+    planner=opus/high
+    writer=opus/medium
+    reviewer=opus/high
+    auditor=opus/xhigh
+    ;;
+  max)
+    planner=fable/high
+    writer=opus/medium
+    reviewer=opus/high
+    auditor=fable/high
+    ;;
+  *)
+    sed -n '2,11p' "$0"
+    exit 2
+    ;;
 esac
 
 # codex-reviewer is on when its file is in .claude/agents/, off when it is in .claude/optional/.
 # Either way the file is moved, never deleted, so edits to it survive.
-on=.claude/agents/codex-reviewer.md; off=.claude/optional/codex-reviewer.md
+on=.claude/agents/codex-reviewer.md
+off=.claude/optional/codex-reviewer.md
 if [[ $cross -eq 1 && ! -f "$off" && ! -f "$on" ]]; then
-  echo "error: --cross needs $off (or $on); neither exists. Re-install it from the kit." >&2; exit 1
+  echo "error: --cross needs $off (or $on); neither exists. Re-install it from the kit." >&2
+  exit 1
 fi
 
-set_model() {  # file model/effort
+set_model() { # file model/effort
   [[ -f "$1" ]] || return 0
   python3 - "$1" "${2%/*}" "${2#*/}" <<'PY'
 import re, sys

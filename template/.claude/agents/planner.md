@@ -40,7 +40,7 @@ You cannot ask the owner directly; the main session does. Decisions that belong 
 
 ## Output
 
-```
+```text
 ## Blueprint: <change>
 
 **Approach**: what and why, 1–2 sentences, with the trade-off.

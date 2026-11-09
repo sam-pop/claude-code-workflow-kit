@@ -30,6 +30,7 @@ It's for anyone using Claude Code on real projects who needs to **trust the resu
 - [Choosing a model profile](#choosing-a-model-profile)
 - [Cross-model review (Codex)](#cross-model-review-codex)
 - [Daily use](#daily-use)
+- [Repository layout](#repository-layout)
 - [What's in the box](#whats-in-the-box)
 - [The agents](#the-agents)
 - [Hooks and guardrails](#hooks-and-guardrails)
@@ -236,7 +237,6 @@ Off by default. `scripts/set-models.sh <profile> --cross` moves `codex-reviewer`
 - **From the writer:** the files changed, the tests added and the bug each one catches, the exit code and last lines of every check, and a **Defaults I picked** list of the decisions nobody made. Read that list.
 - **From the reviewer:** its own re-run of the checks against the writer's claims, then **Standards** findings (does it follow the rules) and **Spec** findings (does it do what was asked), each with a confidence score, plus a **Considered, below threshold** list so you can see what it held back.
 
-
 <details>
 <summary><strong>Example reviewer report</strong> (illustrative)</summary>
 
@@ -279,11 +279,17 @@ The checks line is the point: the reviewer re-ran the checks and compared them w
 
 </details>
 
-Full guide: [HOW-TO-USE.md](HOW-TO-USE.md).
+Full guide: [template/HOW-TO-USE.md](template/HOW-TO-USE.md).
+
+## Repository layout
+
+Only `template/` is installed. `scripts/install.sh` copies the files under `template/` into your repository at the same paths, and nothing else: not this README, the changelog, the research notes or this repo's own tests.
+
+The rest of the root is how this repo maintains itself with the kit, in the open. The root is an ordinary install of `template/`, tailored to the kit's own stack (bash, python3, Markdown), so the kit runs its own workflow and its own checks on every change. When a file under `template/` changes, `scripts/install.sh --upgrade .` brings the root copy up to date, and a test fails if the two drift apart unexpectedly. Maintainer working state (`handoff.md`, saved review reports) is kept locally and is not part of the repository.
 
 ## What's in the box
 
-```
+```text
 claude-code-workflow-kit/
 ├── CLAUDE.md                  # Index template: stack, commands, layout, rules, workflow, ladder and risk tiers
 ├── TAILOR.md                  # Instructions for the session that adapts the kit (deleted after)
@@ -376,7 +382,6 @@ flowchart LR
     F --> G
     G -.-> A
 ```
-
 
 1. **Capture.** Each review is saved to `docs/reviews/`.
 2. **Mark.** You tick findings you fixed, add `dismissed: <reason>` to false alarms, or attach an open-item ID to deferred ones.

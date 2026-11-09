@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Stub of the Claude Code CLI for tests: `claude --version` prints $STUB_CLAUDE_VERSION.
+if [[ "${1:-}" == --version ]]; then
+  echo "${STUB_CLAUDE_VERSION:-9.9.9} (Claude Code)"
+fi
+exit 0

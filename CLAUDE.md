@@ -1,43 +1,52 @@
-# {{PROJECT_NAME}}
+# Claude Kit
 
-{{ONE_SENTENCE_DESCRIPTION}}
+The kit itself: templates, agents, hooks and scripts installed into other repositories (`template/`), maintained here with its own workflow (the root is an install of `template/`).
 
 The main session starts with `handoff.md` when it exists (status, next steps, questions waiting on the owner), then `docs/open.md`. Items in `docs/open.md` are the owner's to decide: design around them and flag them. When one is decided, record it in `docs/decisions.md` and remove it from `docs/open.md`.
 
 ## Stack
 
-{{STACK: language, framework, runtime version, package manager, database, hosting. One line each.}}
+- Shell: bash 3.2 or later, BSD and GNU userland (macOS and Linux); inline Python: python3 3.8 or later, standard library only.
+- Git and GitHub; CI in `.github/workflows/check.yml`.
+- Maintainer tools: node 22 (`.nvmrc`) with `npm ci` for bats and markdownlint-cli2; `scripts/tools.sh install` for shellcheck, shfmt, gitleaks, lychee and actionlint (pinned, checksum-verified, into `.tools/bin`).
 
 ## Commands
 
 Verify through `scripts/check.sh`, so every agent, hook and CI run checks the same thing.
 
 ```bash
-scripts/check.sh lint      # format + lint + type-check
-scripts/check.sh test      # unit and integration tests
-scripts/check.sh build     # production build
-scripts/check.sh security  # secret scan, dependency audit, SAST
-scripts/check.sh doctor    # kit hygiene
+scripts/check.sh lint      # shellcheck, shfmt, markdownlint-cli2, lychee (offline), actionlint
+scripts/check.sh test      # bats tests/
+scripts/check.sh build     # skipped: the kit ships source
+scripts/check.sh security  # gitleaks, tracked sensitive files
+scripts/check.sh doctor    # kit hygiene (template/ left out of the open-item scan)
 scripts/check.sh all       # everything
 ```
 
-Run locally: {{DEV_COMMAND}}
+Setup once: `npm ci && scripts/tools.sh install`. One test file: `npx bats tests/install.bats`. After editing anything under `template/`: `scripts/install.sh --upgrade .`, merge any `.kit` files, delete `.claude/kit-upgrade.md`.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| {{path}} | {{what lives here}} |
-<!-- kit: one row per top-level folder that matters. Point to deeper docs rather than describing internals here. -->
+| `template/` | The product: exactly what `scripts/install.sh` installs. Edit here. |
+| root `CLAUDE.md`, `.claude/`, `docs/`, `scripts/`, `.github/` | Dogfood copies of `template/`, tailored to this repo; synced with `scripts/install.sh --upgrade .` |
+| `scripts/install.sh`, `scripts/kit-upgrade-prompt.md`, `scripts/tools.sh` | The installer, the merge-session prompt it embeds, and the pinned maintainer tools; never installed |
+| `tests/` | bats tests, `helpers.bash`, `stubs/`, `fixtures/` |
+| `docs/research/` | Evidence behind the model and effort defaults |
+| `README.md`, `CHANGELOG.md` | Public docs; the installer reads the version from `CHANGELOG.md` |
 
 ## Rules
 
 Full rules: `docs/conventions.md`. The short version:
 
-- {{RULE_1: e.g. "Data access goes through the repository layer; handlers call the domain."}}
-- {{RULE_2}}
-- {{RULE_3}}
-<!-- kit: five to eight lines, each a rule phrased as what to do. -->
+- Edit `template/` first, then sync the root with `scripts/install.sh --upgrade .`.
+- Write shell for bash 3.2 and BSD userland; python3 inline code uses the standard library only.
+- Add no runtime dependency to `template/`: targets need only bash, git and python3.
+- Never overwrite a file a target tailored: the installer writes a `.kit` sibling instead.
+- Every bug fix ships with a bats test that fails without the fix.
+- Keep `template/CLAUDE.md` at 150 lines or fewer.
+- A behaviour change updates README, `template/HOW-TO-USE.md` and the CHANGELOG Upgrade notes.
 
 ## Workflow
 
@@ -80,11 +89,11 @@ Name the rung and the trigger in each writer and reviewer prompt.
 ## Recording
 
 - Decisions → `docs/decisions.md`, dated.
-- Open items → `docs/open.md`, with an ID (`O1`…), an opened date, a decide-by date and an owner.
+- Open items → `docs/open.md`, with an ID (`Oxx`), an opened date, a decide-by date and an owner.
 - Terms → `docs/glossary.md`, when a term has been explained twice.
-- Status, next steps, questions → `handoff.md`, rewritten at the end of every session. It holds no secrets, credentials or customer data.
-- {{PRIVACY_RULE, if any: e.g. "Tracked files hold no customer names, keys or sample data."}}
+- Status, next steps, questions → `handoff.md`, rewritten at the end of every session. It is local to the maintainer (git-ignored), like the saved reports in `docs/reviews/`.
+- `template/` holds nothing about this repo or its maintainer: no names, emails, pre-release plans or root-only paths (`tests/consistency.bats`).
 
 ## Environment
 
-{{ENVIRONMENT: secrets file name and how to get it, required local services, anything that fails silently without setup.}}
+No secrets and no services. Without `npm ci` and `scripts/tools.sh install`, `scripts/check.sh` fails and names the missing tool. Tests need no network; they use stubs in `tests/stubs/` for codex, gitleaks, timeout and claude unless `KIT_REQUIRE_REAL_TOOLS=1`.

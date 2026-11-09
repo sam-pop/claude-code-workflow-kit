@@ -52,7 +52,7 @@ git ls-files --others --exclude-standard
 
 Start the report with this heading exactly; the review log saves reports by it, and the main session re-spawns the work at the next rung (CLAUDE.md, Workflow):
 
-```
+```text
 ## STUCK: <change>
 Rung: <n from the prompt> · Trigger: <which rule>
 Failing check: <command> exit <n>, last 20 lines pasted

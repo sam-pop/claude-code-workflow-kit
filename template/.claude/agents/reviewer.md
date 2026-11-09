@@ -69,7 +69,7 @@ On a newly tailored repo the Standards axis falls back to the classic design sme
 
 Start your final message with the heading line exactly as below; the review log saves reports by it.
 
-```
+```text
 ## Review: <change>
 
 ### Summary

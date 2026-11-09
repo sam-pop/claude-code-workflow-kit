@@ -17,24 +17,46 @@
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
 TPL="$KIT/template"
-MODE=install; DRY=0; FORCE=0; TARGET=""
+MODE=install
+DRY=0
+FORCE=0
+TARGET=""
 for a in "$@"; do
   case "$a" in
     --upgrade) MODE=upgrade ;;
     --dry-run) DRY=1 ;;
     --force) FORCE=1 ;;
-    -*) echo "unknown option: $a"; sed -n '2,3p' "$0"; exit 2 ;;
+    -*)
+      echo "unknown option: $a"
+      sed -n '2,3p' "$0"
+      exit 2
+      ;;
     *) TARGET="$a" ;;
   esac
 done
-[[ -n "$TARGET" ]] || { echo "usage: install.sh [--upgrade [--force]] [--dry-run] /path/to/repo"; exit 2; }
-[[ -d "$TARGET" ]] || { echo "not a directory: $TARGET"; exit 1; }
-command -v python3 >/dev/null || { echo "python3 is required"; exit 1; }
-[[ -d "$TPL" ]] || { echo "the kit has no template/ directory: $TPL"; exit 1; }
+[[ -n "$TARGET" ]] || {
+  echo "usage: install.sh [--upgrade [--force]] [--dry-run] /path/to/repo"
+  exit 2
+}
+[[ -d "$TARGET" ]] || {
+  echo "not a directory: $TARGET"
+  exit 1
+}
+command -v python3 >/dev/null || {
+  echo "python3 is required"
+  exit 1
+}
+[[ -d "$TPL" ]] || {
+  echo "the kit has no template/ directory: $TPL"
+  exit 1
+}
 TARGET="$(cd "$TARGET" && pwd -P)"
 TPL="$(cd "$TPL" && pwd -P)"
 case "$TARGET/" in
-  "$TPL"/*) echo "refusing to install into the kit's own template/: $TARGET"; exit 1 ;;
+  "$TPL"/*)
+    echo "refusing to install into the kit's own template/: $TARGET"
+    exit 1
+    ;;
 esac
 
 if git -C "$KIT" rev-parse --git-dir >/dev/null 2>&1; then

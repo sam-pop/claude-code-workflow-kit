@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 ## [1.4] — 2026-11-09
 
 ### Added
+
 - Effort per role: `scripts/set-models.sh` writes `effort:` beside `model:`.
 - Profile `lite` (Sonnet/high planner, writer and reviewer; Opus/high auditor) for Pro ($20) plans.
 - Risk tiers (Low, Medium, High) that set the reviewer's effort, and a writer escalation ladder, both in the `CLAUDE.md` Workflow section.
@@ -15,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 - Research report and notes under `docs/research/`; README sections on cost, cross-model review, troubleshooting and upgrading.
 
 ### Changed
+
 - Standard profile: planner opus/high, writer opus/medium (was Sonnet), reviewer opus/high, auditor opus/xhigh. The `max` profile: Fable planner and auditor, Opus writer and reviewer.
 - The security auditor's Critical and High findings block a release only with a reproduction; its report records the served model.
 - The reviewer's report gains a `### Run` line (tier, writer rung, requested model and effort).
@@ -22,9 +24,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 - The installer copies only files tracked in the kit checkout (`git ls-files`), and no longer copies `README.md`, `CHANGELOG.md`, `docs/research/`, `docs/assets/` or the kit's own review log.
 
 ### Fixed
+
 - `scripts/doctor.sh` no longer fails on binary files or on research and release documents when it looks for undeclared open-item IDs.
 
 ### Upgrade notes
+
 - The writer is now opus/medium: re-run `scripts/set-models.sh <profile> [--cross]` after merging.
 - If `.claude/settings.json` is tailored, add `codex-reviewer|writer` to the `SubagentStop` matcher (`reviewer|security-auditor|codex-reviewer|writer`).
 - Merge the `CLAUDE.md` `## Workflow` text: risk tiers, cross-model review and the writer ladder.

@@ -25,9 +25,11 @@ Optional companion skills: install per [that repo's README](https://github.com/m
 ## Per repo: install and tailor (about 30 minutes)
 
 1. **Install.**
+
    ```bash
    /path/to/claude-code-workflow-kit/scripts/install.sh /path/to/your-repo
    ```
+
    Nothing is overwritten. Where a file already existed, the kit's version lands beside it as `*.kit` to merge by hand. The install also writes `.claude/kit-version` and `.claude/kit-manifest` (commit both); they are what lets `--upgrade` later tell an untouched file from a tailored one.
 
    **Review-only** (other people commit to the repo): install into a separate review workspace instead, never into their repo. Hooks run shell commands on your machine, and a PR could change them. `TAILOR.md` sets this up.

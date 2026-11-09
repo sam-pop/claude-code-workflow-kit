@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stub of timeout/gtimeout for tests: logs its name and the seconds to $STUB_LOG/timeout.log and
+# exits 124 (timed out) without running the command.
+echo "$(basename "$0") $1" >>"${STUB_LOG:-/tmp}/timeout.log"
+exit 124

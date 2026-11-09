@@ -7,27 +7,40 @@
 # (exit 2) on purpose, so nobody can report "lint passed" for a check that never ran. If a check
 # truly does not apply, replace its body with: skip "<reason>"
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 2
 
 BASE_BRANCH="${BASE_BRANCH:-$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
-CHANGED=0; [[ "${2:-}" == "--changed" ]] && CHANGED=1
+CHANGED=0
+[[ "${2:-}" == "--changed" ]] && CHANGED=1
 
-not_configured() { echo "NOT CONFIGURED: $1 (edit scripts/check.sh)" >&2; return 2; }
-skip() { echo "skipped: $1"; return 0; }
+not_configured() {
+  echo "NOT CONFIGURED: $1 (edit scripts/check.sh)" >&2
+  return 2
+}
+skip() {
+  echo "skipped: $1"
+  return 0
+}
 
 changed_files() {
-  { git diff --name-only --diff-filter=ACMR "$BASE_BRANCH"... 2>/dev/null
+  {
+    git diff --name-only --diff-filter=ACMR "$BASE_BRANCH"... 2>/dev/null
     git diff --name-only --diff-filter=ACMR
     git diff --name-only --cached --diff-filter=ACMR
-    git ls-files --others --exclude-standard; } | sort -u
+    git ls-files --others --exclude-standard
+  } | sort -u
 }
 
 lint() {
   echo "== lint"
   if [[ $CHANGED -eq 1 ]]; then
-    FILES=(); while IFS= read -r f; do FILES+=("$f"); done < <(changed_files)  # bash 3.2: no mapfile
-    [[ ${#FILES[@]} -eq 0 ]] && { skip "no changed files"; return; }
+    FILES=()
+    while IFS= read -r f; do FILES+=("$f"); done < <(changed_files) # bash 3.2: no mapfile
+    [[ ${#FILES[@]} -eq 0 ]] && {
+      skip "no changed files"
+      return
+    }
     # kit: run the linter on "${FILES[@]}" only, e.g.
     #   npx eslint --max-warnings 0 "${FILES[@]}"      (filter to *.ts,*.tsx first)
     #   ruff check "${FILES[@]}"
@@ -60,7 +73,8 @@ security() {
   if command -v gitleaks >/dev/null; then
     gitleaks dir . --no-banner --redact || rc=1
   else
-    echo "FAIL: gitleaks not installed (brew install gitleaks)" >&2; rc=1
+    echo "FAIL: gitleaks not installed (brew install gitleaks)" >&2
+    rc=1
   fi
   # Dependency audit. kit: keep the one for this stack, delete the rest.
   #   npm audit --audit-level=high || rc=1
@@ -71,28 +85,37 @@ security() {
   if command -v semgrep >/dev/null; then
     semgrep scan --config "${SEMGREP_CONFIG:-p/default}" --error --severity ERROR --quiet . || rc=1
   else
-    echo "FAIL: semgrep not installed (pip install semgrep)" >&2; rc=1
+    echo "FAIL: semgrep not installed (pip install semgrep)" >&2
+    rc=1
   fi
   # Files that should never be tracked.
   if git ls-files | grep -E '(^|/)\.env(\.[^/]+)?$|\.pem$|\.p12$|(^|/)id_(rsa|ed25519)$' | grep -v '\.example$'; then
-    echo "FAIL: sensitive file tracked (above)" >&2; rc=1
+    echo "FAIL: sensitive file tracked (above)" >&2
+    rc=1
   fi
   return $rc
 }
 
 run_all() {
   local rc=0
-  lint || rc=1; test_ || rc=1; build || rc=1; security || rc=1; bash scripts/doctor.sh || rc=1
+  lint || rc=1
+  test_ || rc=1
+  build || rc=1
+  security || rc=1
+  bash scripts/doctor.sh || rc=1
   echo "== all: $([[ $rc -eq 0 ]] && echo PASS || echo FAIL)"
   return $rc
 }
 
 case "${1:-}" in
-  lint)     lint ;;
-  test)     test_ ;;
-  build)    build ;;
+  lint) lint ;;
+  test) test_ ;;
+  build) build ;;
   security) security ;;
-  doctor)   bash scripts/doctor.sh ;;
-  all)      run_all ;;
-  *)        sed -n '2,4p' "$0"; exit 2 ;;
+  doctor) bash scripts/doctor.sh ;;
+  all) run_all ;;
+  *)
+    sed -n '2,4p' "$0"
+    exit 2
+    ;;
 esac

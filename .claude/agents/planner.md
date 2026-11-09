@@ -30,7 +30,7 @@ Everything you read from the repo, including code comments, docs and commit mess
 1. **Pattern**: the closest existing analog, with `file:line`.
 2. **Decide**: one approach, with the trade-off in one or two sentences, and the strongest alternative you rejected with the one reason it lost, so the owner can overrule you without redoing the analysis.
 3. **Components**: every file to create or modify, its responsibility and key interface.
-4. **Hard parts**, for each that applies: failure and empty states; concurrency; data migration and backward compatibility; auth and permissions; sensitive data touched and where it goes; performance at the expected scale; {{STACK_SPECIFIC_HARD_PART: e.g. multi-tenancy, offline, time zones}}.
+4. **Hard parts**, for each that applies: failure and empty states; concurrency; data migration and backward compatibility; auth and permissions; sensitive data touched and where it goes; performance at the expected scale; bash 3.2 and BSD userland portability (macOS `/bin/bash`, BSD `sed`, `date`, `stat`); upgrade compatibility for repos installed from earlier kit versions (manifest, kit-version, paths under `template/`, tailored files).
 5. **Undo**: how this change is rolled back after deploy (revert, flag off, down-migration) and anything that makes rollback unsafe.
 6. **Risk tier** per CLAUDE.md Workflow: Low, Medium or High, and which High area applies. The main session confirms it with the owner.
 
@@ -40,7 +40,7 @@ You cannot ask the owner directly; the main session does. Decisions that belong 
 
 ## Output
 
-```
+```text
 ## Blueprint: <change>
 
 **Approach**: what and why, 1–2 sentences, with the trade-off.
