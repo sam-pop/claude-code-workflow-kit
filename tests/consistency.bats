@@ -87,6 +87,29 @@ PY
   assert_output ""
 }
 
+@test "no GNU-only alternation (\| in a basic regex) in grep or sed: BSD tools on macOS read it literally" {
+  run python3 - <<'PY'
+import re, subprocess
+files = subprocess.run(["git", "ls-files", "-co", "--exclude-standard", "--", "*.sh", "*.bash", "*.bats",
+                        "tests/stubs/*"], capture_output=True, text=True).stdout.split()
+# grep or sed run without -E/-r whose single-quoted pattern holds \|
+cmd = re.compile(r"\b(grep|sed)\b([^'|;]*)'([^']*)'")
+for f in files:
+    try:
+        lines = open(f, encoding="utf-8").read().split("\n")
+    except FileNotFoundError:
+        continue
+    for n, line in enumerate(lines, 1):
+        if re.match(r"\s*#", line):
+            continue
+        for m in cmd.finditer(line):
+            flags, pattern = m.group(2), m.group(3)
+            if "\\|" in pattern and not re.search(r"\s-[A-Za-z]*[Er]", flags):
+                print(f"{f}:{n}: {line.strip()}")
+PY
+  assert_output ""
+}
+
 @test "every shell file starts with a bash or bats shebang" {
   while IFS= read -r f; do
     head -1 "$f" | grep -qE '^#!/usr/bin/env (bash|bats)$' || fail "$f: $(head -1 "$f")"
@@ -166,7 +189,7 @@ PY
   run sed -n '/^Claude Kit is a set/,/^It.s for anyone/p' README.md
   assert_output "$(cat tests/fixtures/readme-intro.md)"
   # The order is: hero, ---, intro, TL;DR, ---, Contents.
-  run grep -n '^---$\|^## TL;DR\|^## Contents\|^Claude Kit is a set' README.md
+  run grep -nE '^---$|^## TL;DR|^## Contents|^Claude Kit is a set' README.md # -E: BSD grep has no \| in basic regex
   assert_line --index 0 --regexp '^[0-9]+:---$'
   assert_line --index 1 --regexp ':Claude Kit is a set'
   assert_line --index 2 --regexp ':## TL;DR'
