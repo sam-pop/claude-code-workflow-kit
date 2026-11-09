@@ -9,9 +9,14 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-1.4-informational">
+  <a href="https://github.com/sam-pop/claude-code-workflow-kit/actions/workflows/check.yml"><img alt="check" src="https://github.com/sam-pop/claude-code-workflow-kit/actions/workflows/check.yml/badge.svg"></a>
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5-informational">
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-v2.1.292%2B-d97757">
   <img alt="Status" src="https://img.shields.io/badge/status-early-yellow">
+</p>
+
+<p align="center">
+  This repo passes its own checks: the kit is installed at its root, and CI runs <code>scripts/check.sh all</code> on Linux and the test suite under macOS <code>/bin/bash</code> 3.2 on every change.
 </p>
 
 ---
@@ -136,11 +141,13 @@ brew install gitleaks
 pip install semgrep
 ```
 
-On Linux (as in `.github/workflows/check.yml`):
+On Linux (as in `template/.github/workflows/check.yml`), check the download against its published sha256 before unpacking it:
 
 ```bash
-curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | sudo tar -xz -C /usr/local/bin gitleaks
-pipx install semgrep
+curl -sSfL -o gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tgz" | sha256sum -c -
+sudo tar -xzf gitleaks.tgz -C /usr/local/bin gitleaks
+pipx install semgrep==1.184.0
 ```
 
 ### Install into a repository
@@ -217,7 +224,7 @@ Off by default. `scripts/set-models.sh <profile> --cross` moves `codex-reviewer`
 - **When it runs.** After the reviewer on High-risk diffs, and once before a release. It is a **second opinion to triage, never a gate**: where it agrees with the Claude reviewer, confidence goes up; what only it raised gets your attention.
 - **How.** The agent only relays `scripts/codex-review.sh`: `gpt-6.1-sol` at effort `high` for High-risk diffs, `gpt-6-astra` at `high` for a release (one retry on `gpt-6.1-sol` at `xhigh` if Astra fails). Never `ultra`, which fans out to subagents. A ChatGPT Plus subscription gives it a quota separate from your Claude plan.
 - **Egress.** Codex works in a fresh copy of HEAD (checked out through a temporary index) plus your uncommitted changes, with no `.git`: git-ignored files and history are kept out of the directory Codex works in; Codex's read-only sandbox limits writes, not reads, so treat anything your user account can read as reachable. If gitleaks is installed, that copy and the final prompt (which holds the diff, removed lines included) are scanned first, with the `.gitleaks.toml` and `.gitleaksignore` from the base (never from the change under review); new inline `gitleaks:allow` markers in the change are ignored; and a finding **refuses the run**. The tracked code and the diff leave for OpenAI; on client work, get the client's OK first.
-- **Not on Review-only** in 1.4: the script reviews its own repo, not someone else's PR.
+- **Not on Review-only**: the script reviews its own repo, not someone else's PR.
 
 ## Daily use
 
@@ -256,16 +263,19 @@ tier: High · writer rung: 1 (trigger: none) · requested: opus/xhigh
 lint: 0 (writer said 0) · test: 142 passed / 0 skipped vs base 138 / 0 · build: 0
 
 ### Standards
-- [ ] [92] src/app/api/invoices/export/route.ts:18 — tenant ID is read from the
+- [ ] [92] `src/app/api/invoices/export/route.ts:18` — tenant ID is read from the
       query string → take it from the session; as written, any signed-in user
       can export another tenant's invoices.
-- [ ] [88] src/lib/invoices/export.test.ts:41 — expected CSV is built with the
+  > const tenantId = req.nextUrl.searchParams.get("tenant");
+- [ ] [88] `src/lib/invoices/export.test.ts:41` — expected CSV is built with the
       same toCsvRow() the code uses (tautological) → assert against a literal
       fixture.
+  > const expected = rows.map(toCsvRow).join("\n");
 
 ### Spec
-- [ ] [86] route.ts:30 — "Exports are limited to the selected date range" →
-      the range is parsed but never applied; the query returns every invoice.
+- [ ] [86] `src/app/api/invoices/export/route.ts:30` — "Exports are limited to the
+      selected date range" → the range is parsed but never applied.
+  > const { from, to } = parseRange(req); … db.invoice.findMany({ where: { tenantId } })
 
 ### Considered, below threshold
 - [70] src/lib/invoices/export.ts:12 — loads all rows into memory; fine at
@@ -273,9 +283,19 @@ lint: 0 (writer said 0) · test: 142 passed / 0 skipped vs base 138 / 0 · build
 
 ### Not reviewed
 Column order and headers against what finance expects.
+
+### Coverage
+read: src/app/api/invoices/export/route.ts, src/lib/invoices/export.ts, src/lib/invoices/export.test.ts
+not read (reason): none
+
+### Verification
+checked: 2026-11-09 14:02 · base: main@1a2b3c4 · scripts/verify-review.sh
+status: complete
+quotes: 3 verified, 0 unverified, 0 unquoted
+coverage: 3 changed files, 0 not in ### Coverage
 ```
 
-The checks line is the point: the reviewer re-ran the checks and compared them with the writer's claim. A mismatch there is a blocking finding in itself.
+The checks line is the point: the reviewer re-ran the checks and compared them with the writer's claim. A mismatch there is a blocking finding in itself. The `### Verification` block is not written by the reviewer: when the report is saved, `scripts/verify-review.sh` looks up each quoted line in the file it cites and checks that every changed file was read. A quote it cannot find means the finding may describe code that is not there, so you read that one first.
 
 </details>
 
@@ -290,11 +310,10 @@ The rest of the root is how this repo maintains itself with the kit, in the open
 ## What's in the box
 
 ```text
-claude-code-workflow-kit/
+template/                      # Everything here is installed, at the same paths; nothing else is
 ├── CLAUDE.md                  # Index template: stack, commands, layout, rules, workflow, ladder and risk tiers
 ├── TAILOR.md                  # Instructions for the session that adapts the kit (deleted after)
 ├── HOW-TO-USE.md              # Operator guide: daily commands, upkeep, ownership
-├── CHANGELOG.md               # Release notes and Upgrade notes (not installed)
 ├── handoff.md                 # Session-to-session state, rewritten each session
 ├── docs/
 │   ├── conventions.md         # Rules and anti-patterns, each marked mechanical or judgment
@@ -302,14 +321,9 @@ claude-code-workflow-kit/
 │   ├── open.md                # What isn't, with owner and decide-by date
 │   ├── glossary.md            # Shared terms: one word instead of a sentence
 │   ├── rollout.md             # Tiers, profiles, cadence, metrics, kill criteria
-│   ├── reviews/               # Review log, written automatically
-│   ├── research/              # Model and effort research: report + notes (not installed)
-│   └── assets/                # Social card (not installed)
+│   └── reviews/README.md      # Review log; reports are written here automatically
 ├── .claude/
 │   ├── settings.json          # Deny rules, hooks, sequential agents
-│   ├── kit-upgrade-prompt.md  # Merge-session prompt; --upgrade embeds it in .claude/kit-upgrade.md (not installed)
-│   ├── kit-version            # (in installed repos) version and commit installed
-│   ├── kit-manifest           # (in installed repos) sha256 of each kit file as installed
 │   ├── agents/
 │   │   ├── planner.md
 │   │   ├── writer.md
@@ -319,14 +333,19 @@ claude-code-workflow-kit/
 │       └── codex-reviewer.md  # Off; --cross moves it into .claude/agents/
 ├── scripts/
 │   ├── check.sh               # The single verification entry point
+│   ├── check-stamp.sh         # Remembers when check.sh all last passed; warns at Stop when files changed since
 │   ├── doctor.sh              # Kit hygiene checks
 │   ├── lint-hook.sh           # Shows lint failures to Claude after each edit
 │   ├── capture-review.sh      # Saves reviewer, auditor, Codex and STUCK reports
+│   ├── verify-review.sh       # Checks a saved review's quotes and coverage against the code
 │   ├── set-models.sh          # Switches agents between model profiles; --cross
-│   ├── codex-review.sh        # Codex second opinion + the agent's Bash guard
-│   └── install.sh             # Installs or upgrades the kit without overwriting tailored files
-└── .github/workflows/check.yml  # CI runs check.sh all
+│   └── codex-review.sh        # Codex second opinion + the agent's Bash guard
+└── .github/
+    ├── workflows/check.yml    # CI runs check.sh all (actions pinned by SHA, gitleaks checksum-verified)
+    └── dependabot.yml         # Keeps the pinned actions current
 ```
+
+The installer adds `.claude/kit-version` and `.claude/kit-manifest` (the version installed and the sha256 of each file as installed). The root of this repo holds `scripts/install.sh`, `scripts/kit-upgrade-prompt.md` (the merge-session prompt `--upgrade` embeds), the changelog, the research notes under `docs/research/` and the kit's own tests; none of these are installed.
 
 ### `scripts/check.sh`
 
@@ -363,7 +382,8 @@ Configured in `.claude/settings.json`:
 |---|---|
 | `permissions.deny` | Blocks `git push`, `reset --hard`, `clean`, `branch -D`, `checkout -- .`, `restore .`, `stash drop`, `npm publish`, and reading `.env` and `*.pem` files |
 | `PostToolUse` on edits | Runs `check.sh lint --changed`; on failure, shows the output to Claude so it fixes the problem before moving on. Stays quiet until lint is configured. |
-| `SubagentStop` (reviewer, security-auditor, codex-reviewer, writer) / `SubagentHandback` | Saves reviewer, auditor and Codex reports to `docs/reviews/`, and a writer's `## STUCK:` report (other writer reports are ignored) |
+| `SubagentStop` (reviewer, security-auditor, codex-reviewer, writer) / `SubagentHandback` | Saves reviewer, auditor and Codex reports to `docs/reviews/`, and a writer's `## STUCK:` report (other writer reports are ignored). Reviewer and Codex reports then get a `### Verification` block from `scripts/verify-review.sh` (are the quoted lines really in the files, was every changed file read, are all sections there); when something is off, a one-line summary appears in the session. |
+| `Stop` | Runs `scripts/check-stamp.sh hook` when Claude finishes a turn. If files changed since the last passing `check.sh all`, it shows which ones, so "checks passed" never quietly refers to older code. Silent when nothing changed, and until `check.sh` is configured. |
 | codex-reviewer frontmatter `PreToolUse` | Allows Bash only for `scripts/codex-review.sh high\|release [ref]` |
 | `CLAUDE_CODE_FORK_SUBAGENT=0` | Agents run in sequence, and Claude waits for each report |
 
@@ -453,7 +473,7 @@ Be clear about what this does and doesn't protect against.
 - **Hooks execute repository code.** Anything in `.claude/settings.json` or `scripts/` runs on your machine. Only install the kit in repos whose committers you trust, use the Review-only tier otherwise, and review changes to those paths before opening Claude Code on a branch.
 - **The security auditor is a first pass, not a pen test.** It makes routine review cheap and consistent; client-facing systems still need human security review. Opus 5.5 reroutes most security work to Opus 4.8, so the audit report records the served model (from `/tasks`) instead of assuming it.
 - **Fable bills credits.** On Pro and standard Team plans from the first request; `claude -p` does so without asking. Set a cap in `/usage-credits`.
-- **Codex egress.** Git-ignored files and history are kept out of the directory Codex works in; Codex's read-only sandbox limits writes, not reads, so treat anything your user account can read as reachable. Tracked code and the diff leave for OpenAI; on client work, get the client's consent. Cross-model review is not available on Review-only in 1.4.
+- **Codex egress.** Git-ignored files and history are kept out of the directory Codex works in; Codex's read-only sandbox limits writes, not reads, so treat anything your user account can read as reachable. Tracked code and the diff leave for OpenAI; on client work, get the client's consent. Cross-model review is not available on Review-only.
 - **Confidence scores are the model's own estimate.** The "below threshold" list and the escaped-defect metric exist so you can tune them from evidence.
 - **Not yet battle-tested across many stacks.** Expect your first tailoring to find something to fix, and please send it back.
 
@@ -497,7 +517,7 @@ Issues and pull requests are welcome. Especially useful:
 - `check.sh` recipes for stacks the comments don't cover
 - Reports from real tailoring runs: what `TAILOR.md` got wrong
 
-Please keep changes small and explain the failure mode a change prevents.
+Please keep changes small and explain the failure mode a change prevents. How to set up, test and sync a change: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits
 

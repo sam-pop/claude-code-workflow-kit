@@ -203,6 +203,9 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   assert_success
   assert_line --partial "retired 0"
   refute_line --regexp '^new: +\.claude/optional/codex-reviewer.md'
+  # 1.5 adds exactly these three files.
+  assert_equal "$(grep -E '^new: ' <<<"$output" | awk '{print $2}' | sort | tr '\n' ' ')" \
+    ".github/dependabot.yml scripts/check-stamp.sh scripts/verify-review.sh "
   assert_line --regexp '\.claude/agents/codex-reviewer\.md'
   [[ ! -e "$TARGET/.claude/optional/codex-reviewer.md" ]]
 }

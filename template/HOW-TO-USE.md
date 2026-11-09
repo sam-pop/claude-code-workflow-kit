@@ -11,11 +11,13 @@ brew install gitleaks      # secret scan (check.sh security fails without it)
 pip install semgrep        # SAST
 ```
 
-On Linux, the same two tools (as in `.github/workflows/check.yml`):
+On Linux, the same two tools (as in `.github/workflows/check.yml`), with the gitleaks download checked against its sha256 before it is unpacked:
 
 ```bash
-curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | sudo tar -xz -C /usr/local/bin gitleaks
-pipx install semgrep
+curl -sSfL -o gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tgz" | sha256sum -c -
+sudo tar -xzf gitleaks.tgz -C /usr/local/bin gitleaks
+pipx install semgrep==1.184.0
 ```
 
 Optional: the [Codex CLI](https://learn.chatgpt.com/docs/non-interactive-mode), only if you turn on cross-model review (see Models).
@@ -51,7 +53,7 @@ The kit ships on the **standard** profile. Switch with `scripts/set-models.sh <l
 | **standard** (default) | opus/high | opus/medium | opus/high | opus/xhigh |
 | **max** (plans with Fable) | fable/high | opus/medium | opus/high | fable/high |
 
-`--cross` also turns on the codex-reviewer, a Codex second opinion on High-risk diffs and before a release (off by default). It sends those diffs to OpenAI; on client work get the client's OK first. It is not available on Review-only in 1.4 (the script reviews its own repo, not someone else's PR). Fable bills usage credits on Pro and standard Team plans from the first request, and `claude -p` does so without asking; set a cap in `/usage-credits`. Review effort scales with risk and the writer escalates when stuck: both are defined in `CLAUDE.md` (Workflow), which needs Claude Code v2.1.292 or later. Details and sources: `docs/rollout.md`, Model profiles, and [the research report](https://github.com/sam-pop/claude-code-workflow-kit/blob/main/docs/research/coding-agent-model-effort-combos.md).
+`--cross` also turns on the codex-reviewer, a Codex second opinion on High-risk diffs and before a release (off by default). It sends those diffs to OpenAI; on client work get the client's OK first. It is not available on Review-only (the script reviews its own repo, not someone else's PR). Fable bills usage credits on Pro and standard Team plans from the first request, and `claude -p` does so without asking; set a cap in `/usage-credits`. Review effort scales with risk and the writer escalates when stuck: both are defined in `CLAUDE.md` (Workflow), which needs Claude Code v2.1.292 or later. Details and sources: `docs/rollout.md`, Model profiles, and [the research report](https://github.com/sam-pop/claude-code-workflow-kit/blob/main/docs/research/coding-agent-model-effort-combos.md).
 
 ## Daily
 
@@ -73,9 +75,13 @@ What comes back:
 
 Agents run one at a time in the foreground; the kit turns off fork mode so Claude waits for each.
 
+When Claude finishes a turn after files changed since the last passing `scripts/check.sh all`, a one-line warning names those files ("scripts/check.sh all has not passed since these changes: …"). It is a reminder, not a block: run `scripts/check.sh all` (or ask Claude to) before you trust a "checks passed" claim or commit. Nothing is shown while the tree matches the last passing run or HEAD.
+
 ## After every review
 
 Reports save themselves to `docs/reviews/` (from the report's first line): `-review.md`, `-security.md`, `-codex.md` for the Codex second opinion, and `-stuck.md` when a writer hit a stop rule and the ladder took over. Fill in `served:` on audit reports from `/tasks`. Mark each finding in the saved file: tick when fixed; `dismissed: <reason>` when it isn't real (same wording each time); or add an O-id when deferred. If reviews run but the folder stays empty, the capture hook is broken: fix that before trusting any metric.
+
+Each saved review and Codex report ends with a `### Verification` block written by `scripts/verify-review.sh`. Read it before the findings: an `unverified` quote means the reviewer cited text that is not at that line (check that finding first, it may describe code that is not there); files listed after `not in ### Coverage` were changed but not read; `status: incomplete` names the missing sections. When any of these is off, the session also shows a one-line summary as the report is saved.
 
 ## Upgrading the kit
 

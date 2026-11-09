@@ -150,3 +150,52 @@ PY
     [[ -f "template/$f" ]] || fail "installed $f, which is not under template/"
   done < <(cd "$TARGET" && find . -path ./.git -prune -o -type f -print | sed 's#^\./##')
 }
+
+workflows() { git ls-files -co --exclude-standard -- '.github/workflows/*.yml' 'template/.github/workflows/*.yml' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
+
+@test "one gitleaks version and checksum everywhere: tools.sh, template check.yml, README, HOW-TO-USE" {
+  v=$(awk '$1 == "gitleaks" && $3 == "linux-x64" {print $2}' scripts/tools.sh)
+  sha=$(awk '$1 == "gitleaks" && $3 == "linux-x64" {print $4}' scripts/tools.sh)
+  [[ -n "$v" && -n "$sha" ]]
+  grep -q "GITLEAKS_VERSION: $v$" template/.github/workflows/check.yml
+  grep -q "GITLEAKS_SHA256: $sha$" template/.github/workflows/check.yml
+  for f in README.md template/HOW-TO-USE.md; do
+    grep -q "download/v$v/gitleaks_${v}_linux_x64.tar.gz" "$f" || fail "$f: not gitleaks $v"
+    grep -q "$sha  gitleaks.tgz" "$f" || fail "$f: no checksum for gitleaks $v"
+  done
+  run bash -c "git ls-files -co --exclude-standard | grep -v '^tests/' | xargs grep -ohIE 'gitleaks[/_ -]v?8\.[0-9]+\.[0-9]+|GITLEAKS_VERSION: 8\.[0-9]+\.[0-9]+|gitleaks 8\.[0-9]+\.[0-9]+' 2>/dev/null | grep -oE '8\.[0-9]+\.[0-9]+' | sort -u"
+  assert_output "$v"
+}
+
+@test "every uses: is pinned to a 40-hex commit SHA with a version comment" {
+  while IFS= read -r f; do
+    while IFS= read -r line; do
+      [[ "$line" =~ uses:\ [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}\ \#\ v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "$f: $line"
+    done < <(grep -E 'uses:' "$f")
+  done < <(workflows)
+}
+
+@test "every workflow has top-level read-only permissions and persist-credentials: false" {
+  while IFS= read -r f; do
+    grep -qE '^permissions:' "$f" || fail "$f has no top-level permissions"
+    grep -qE '^  contents: read$' "$f" || fail "$f: contents is not read"
+    grep -q 'persist-credentials: false' "$f" || fail "$f: checkout keeps credentials"
+    grep -qE '^ +timeout-minutes:' "$f" || fail "$f: no timeout-minutes"
+  done < <(workflows)
+}
+
+@test "an action has the same SHA in the root and template workflows" {
+  run bash -c "grep -hoE '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}' .github/workflows/*.yml template/.github/workflows/*.yml | sort -u | cut -d@ -f1 | uniq -d"
+  assert_output ""
+}
+
+@test "semgrep is installed at a pinned version in the template workflow" {
+  grep -qE 'SEMGREP_VERSION: [0-9]+\.[0-9]+\.[0-9]+$' template/.github/workflows/check.yml
+  grep -q 'semgrep==${SEMGREP_VERSION}' template/.github/workflows/check.yml
+}
+
+@test "dependabot covers github-actions in template/ and github-actions plus npm at the root" {
+  grep -q 'package-ecosystem: github-actions' template/.github/dependabot.yml
+  grep -q 'package-ecosystem: github-actions' .github/dependabot.yml
+  grep -q 'package-ecosystem: npm' .github/dependabot.yml
+}

@@ -1,0 +1,8 @@
+# Keeps the SHA-pinned actions in .github/workflows current. Delete this file if the repository
+# uses another updater (Renovate) or is not on GitHub; add an ecosystem for the stack's packages.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
