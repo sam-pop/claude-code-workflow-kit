@@ -6,7 +6,8 @@
 # Saved by the first line: "## Review:" -> review, "## Security audit:" -> security,
 # "## Codex review:" -> codex, "## STUCK:" -> stuck (a writer that hit a stop rule). Anything else
 # is ignored, so a normal writer report or a handback from any other agent is never saved.
-# Review and codex reports are then checked by scripts/verify-review.sh, whose `### Verification`
+# When the verify-review extra is on (scripts/verify-review.sh exists), review and codex reports are
+# then checked by it, and its `### Verification`
 # block is appended to the saved file; when it finds issues (an incomplete report, a quote not in
 # the code, a changed file not in ### Coverage) the hook prints a systemMessage with its summary
 # (counts only: file names stay in the report). When verify-review times out (25 s) or fails, the

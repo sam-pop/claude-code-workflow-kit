@@ -21,9 +21,11 @@
 
 ---
 
-## TL;DR
+Claude Kit is a set of templates, agents, hooks and scripts you install into a repository. A Claude Code session then **tailors it to that repo's stack**, and from that point every change runs through a short, verifiable process: plan, implement, check, review. Claude follows that process instead of improvising one each time.
 
-**What it does.** You install a few agents, hooks, docs and scripts into your repo, with one `scripts/check.sh` that every check runs through. From then on Claude Code plans, implements, checks and reviews every change the same way. A separate reviewer re-runs the checks itself instead of taking the agent's word for it. Decisions and open questions are written down, so you can see what was decided and what still needs you.
+It's for anyone using Claude Code on real projects who needs to **trust the result**: to know what the agent decided on its own, what was actually tested, and what still needs a human eye. It works the same whether you code alone, on a team, or mostly review code that others (or agents) wrote.
+
+## TL;DR
 
 **Get started.** You need Claude Code v2.1.292 or later, `git`, `bash` and `python3`; `gitleaks` and `semgrep` for the security check.
 
@@ -48,10 +50,6 @@ Then say **Read .claude/kit-upgrade.md** in your repo. Files you changed are nev
 Details for each step: [Quick start](#quick-start), [Daily use](#daily-use), [Upgrading the kit](#upgrading-the-kit).
 
 ---
-
-Claude Kit is a set of templates, agents, hooks and scripts you install into a repository. A Claude Code session then **tailors it to that repo's stack**, and from that point every change runs through a short, verifiable process: plan, implement, check, review. Claude follows that process instead of improvising one each time.
-
-It's for anyone using Claude Code on real projects who needs to **trust the result**: to know what the agent decided on its own, what was actually tested, and what still needs a human eye. It works the same whether you code alone, on a team, or mostly review code that others (or agents) wrote.
 
 ## Contents
 

@@ -122,3 +122,10 @@ with_tools() {
   [[ -d "$REPO_ROOT/.tools/bin" ]] && export PATH="$REPO_ROOT/.tools/bin:$PATH"
   return 0
 }
+
+# Switch extras on in the repo in the current directory and commit, as a repo that uses them would.
+extras_on() {
+  local x
+  for x in "$@"; do bash scripts/extras.sh on "$x" >/dev/null || return 1; done
+  git add -A && git commit -qm "extras on: $*"
+}

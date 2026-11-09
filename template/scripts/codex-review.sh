@@ -157,7 +157,7 @@ case "$MODE" in
 esac
 
 [[ -f .claude/agents/codex-reviewer.md ]] || {
-  echo "cross-model review is off; enable with scripts/set-models.sh <profile> --cross" >&2
+  echo "cross-model review is off; enable with scripts/extras.sh on codex" >&2
   exit 3
 }
 command -v codex >/dev/null || {

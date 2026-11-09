@@ -9,6 +9,7 @@ setup() {
   isolate
   installed_target
   cd "$TARGET" || exit 1
+  extras_on stop-warning
   tailor_check
 }
 

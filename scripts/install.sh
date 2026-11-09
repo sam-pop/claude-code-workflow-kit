@@ -14,6 +14,11 @@
 #   --dry-run   print the classification and write nothing
 # State in the target: .claude/kit-version and .claude/kit-manifest (sha256 of each kit file as
 # installed). An unmodified file is replaced in place on upgrade; a modified one gets a .kit sibling.
+# Extras: a file under template/.claude/optional/ is an extra's, off there; on, it lives at its active
+# path (.claude/agents/<f>.md, scripts/<f>.sh). An upgrade updates it where it is, so an extra stays
+# on or off as the repo had it; the manifest keys it by its .claude/optional/ path. A fresh install
+# puts every extra off. After an upgrade, the kit's scripts/extras.sh sync completes each extra (its
+# other files and its hook follow its first file); a sync failure is a warning, not an error.
 # Writes only inside the target: a destination, .kit sibling or state file whose real path leaves it
 # (a symlinked directory or a symlink) refuses the whole run before anything is written. Only files
 # this run writes get their mode set: executable when the kit's copy is, and every .sh.
@@ -82,8 +87,19 @@ upgrade, dry, force = mode == "upgrade", dry == "1", force == "1"
 today = datetime.date.today().isoformat()
 
 NEVER_READD = {"TAILOR.md", "HOW-TO-USE.md"}
-# A repo with cross-model review on has this file under agents/, not optional/.
-ALIAS = {".claude/optional/codex-reviewer.md": ".claude/agents/codex-reviewer.md"}
+# Extras that older kits ran as core: on upgrade from a manifest without them they arrive on.
+ON_FOR_OLDER = {".claude/optional/review-stats.sh"}  # doctor.sh printed the review stats before 1.6
+
+def active_path(rel):
+    """Where an extra's file lives while the extra is on; None for a core file."""
+    head, _, name = rel.rpartition("/")
+    if head != ".claude/optional":
+        return None
+    if name.endswith(".md"):
+        return ".claude/agents/" + name
+    if name.endswith(".sh"):
+        return "scripts/" + name
+    return None
 
 def sha(path):
     with open(path, "rb") as f:
@@ -144,11 +160,23 @@ from_version = old_info.get("version", "unknown")
 files = kit_files()
 kit_hash = {rel: sha(os.path.join(tpl, rel)) for rel in files}
 
+def present(p):
+    return os.path.lexists(os.path.join(target, p))
+
 def dst_of(rel):
-    if not os.path.exists(os.path.join(target, rel)) and rel in ALIAS \
-            and os.path.exists(os.path.join(target, ALIAS[rel])):
-        return ALIAS[rel]
+    """Upgrade only: an extra's file is where the repo keeps it (active when on). A fresh install
+    never looks at the active path, so a repo's own scripts/set-models.sh is left alone."""
+    act = active_path(rel)
+    if not upgrade or act is None or present(rel):
+        return rel
+    if present(act):
+        return act
+    if rel in ON_FOR_OLDER and rel not in old and act not in old:
+        return act
     return rel
+
+def prev_hash(rel, dst):
+    return old[rel] if rel in old else old.get(dst)
 
 # A previous merge is unfinished while .claude/kit-upgrade.md or a kit file's .kit sibling exists.
 upgrade_md = os.path.join(target, ".claude", "kit-upgrade.md")
@@ -171,7 +199,7 @@ def classify(rel):
     if not os.path.exists(path):
         if upgrade and rel in NEVER_READD:
             return "never re-added", dst
-        if upgrade and rel in old:
+        if upgrade and (rel in old or active_path(rel) in old):
             return "skipped", dst
         return "new", dst
     have = sha(path)
@@ -179,9 +207,9 @@ def classify(rel):
         return "current", dst
     if upgrade and os.path.exists(path + ".kit"):  # still unmerged from the last upgrade (--force)
         return "tailored", dst
-    if upgrade and old.get(rel) == have:
+    if upgrade and prev_hash(rel, dst) == have:
         return "replaced", dst
-    if upgrade and old.get(rel) == kit_hash[rel]:
+    if upgrade and prev_hash(rel, dst) == kit_hash[rel]:
         return "tailored (kit unchanged)", dst
     return "tailored", dst
 
@@ -238,7 +266,8 @@ for rel in files:
     elif cls == "tailored":
         shutil.copyfile(src, out + ".kit")
 if upgrade:
-    for rel in sorted(set(old) - set(files)):
+    for rel in sorted(set(old) - set(files) - {dst_of(r) for r in files}
+                      - {active_path(r) for r in files}):
         groups["retired"].append(rel)
         print(f"{'retired:':<26}{rel}   {NOTE['retired']}")
 
@@ -292,6 +321,11 @@ if upgrade:
 PY
 
 [[ "$DRY" == 1 ]] && exit 0
+if [[ "$MODE" == upgrade && -f "$TPL/scripts/extras.sh" ]]; then
+  # The kit's copy, never the target's: an extra on in the repo gets its other files and its hook.
+  CLAUDE_PROJECT_DIR="$TARGET" bash "$TPL/scripts/extras.sh" sync \
+    || echo "warn: scripts/extras.sh sync did not finish; run scripts/extras.sh status in $TARGET" >&2
+fi
 echo
 if [[ "$MODE" == upgrade ]]; then
   echo "Next: open Claude Code in $TARGET and say: Read .claude/kit-upgrade.md"

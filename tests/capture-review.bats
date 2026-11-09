@@ -8,6 +8,7 @@ setup() {
   isolate
   installed_target
   cd "$TARGET" || exit 1
+  extras_on verify-review
 }
 
 stop_json() { python3 -c 'import json,sys; print(json.dumps({"last_assistant_message": sys.argv[1]}))' "$1"; }
@@ -72,6 +73,16 @@ on_branch_with_readme_change() {
   run grep -c '^### Verification$' "$f"
   assert_output 1
   grep -q '^quotes: 1 verified, 0 unverified, 0 unquoted$' "$f"
+}
+
+@test "verify-review off: the review is saved with no Verification block and no message" {
+  on_branch_with_readme_change
+  bash scripts/extras.sh off verify-review >/dev/null
+  run bash -c "$(declare -f stop_json good_review); stop_json \"\$(good_review '# made-up text')\" | scripts/capture-review.sh stop"
+  assert_success
+  assert_output ""
+  run grep -c Verification "$(saved)"
+  assert_output 0
 }
 
 @test "a review with a made-up quote gets a Verification block and a systemMessage" {

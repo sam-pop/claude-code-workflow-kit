@@ -22,7 +22,7 @@ Status: ADOPTED. This is the one file the planner, writer and reviewer cite. Eve
 
 ## Data
 
-- `.claude/kit-version` (`version=… commit=… installed=…`), `.claude/kit-manifest` (`<sha256>  <path>` per installed file) and the set of paths under `template/` are compatibility contracts with every repo installed since 1.4. A path removed from `template/` shows as `retired` in those repos; a renamed one needs an `ALIAS` in `install.sh`.
+- `.claude/kit-version` (`version=… commit=… installed=…`), `.claude/kit-manifest` (`<sha256>  <path>` per installed file) and the set of paths under `template/` are compatibility contracts with every repo installed since 1.4. A path removed from `template/` shows as `retired` in those repos; a renamed one needs handling in `install.sh` (a file moved into an extra is matched through `active_path`).
 - Tracked files hold no maintainer working state: `handoff.md` and saved reports (`docs/reviews/*-*.md`) are git-ignored at the root.
 
 ## Naming and files

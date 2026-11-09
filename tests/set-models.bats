@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# template/scripts/set-models.sh: profiles, --cross, usage errors, CRLF.
+# template/.claude/optional/set-models.sh (profiles extra): profiles, warnings, usage errors, CRLF.
 
 # shellcheck disable=SC2153  # KIT and TARGET are set by helpers.bash
 load helpers
@@ -8,6 +8,7 @@ setup() {
   isolate
   installed_target
   cd "$TARGET" || exit 1
+  extras_on profiles
 }
 
 field() { awk -v k="$2:" 'NR>1 && /^---/ {exit} $1==k {print $2}' ".claude/agents/$1.md" | tr -d '\r'; }
@@ -32,24 +33,37 @@ field() { awk -v k="$2:" 'NR>1 && /^---/ {exit} $1==k {print $2}' ".claude/agent
   done
 }
 
-@test "--cross moves codex-reviewer to agents/ and back, keeping edits" {
-  echo "my edit" >>.claude/optional/codex-reviewer.md
+@test "--cross exits 2 and points at extras.sh on codex; no codex-reviewer file moves" {
   run scripts/set-models.sh standard --cross
-  assert_success
-  assert_output --partial "cross-model review: on"
-  [[ -f .claude/agents/codex-reviewer.md && ! -e .claude/optional/codex-reviewer.md ]]
-  run scripts/set-models.sh standard
-  assert_output --partial "cross-model review: off"
+  assert_failure 2
+  assert_output --partial "cross-model review: scripts/extras.sh on codex"
   [[ -f .claude/optional/codex-reviewer.md && ! -e .claude/agents/codex-reviewer.md ]]
-  run tail -1 .claude/optional/codex-reviewer.md
-  assert_output "my edit"
 }
 
-@test "--cross with neither codex-reviewer file exits 1 (R1-60)" {
-  rm .claude/optional/codex-reviewer.md
-  run scripts/set-models.sh standard --cross
+@test "the dormant copy refuses to run: the profiles extra is off (exit 1)" {
+  bash scripts/extras.sh off profiles >/dev/null
+  run .claude/optional/set-models.sh standard
   assert_failure 1
-  assert_output --partial "neither exists"
+  assert_output --partial "scripts/extras.sh on profiles"
+}
+
+@test "warns on a Claude Code older than 2.1.292, not on a newer one (moved from doctor)" {
+  use_stub claude
+  run env STUB_CLAUDE_VERSION=2.1.291 scripts/set-models.sh standard
+  assert_success
+  assert_output --partial "warn: Claude Code 2.1.291 is older than 2.1.292"
+  run env STUB_CLAUDE_VERSION=2.1.292 scripts/set-models.sh standard
+  refute_output --partial "is older than"
+}
+
+@test "notes Fable billing on max only, and warns on effortLevel in ~/.claude/settings.json" {
+  run scripts/set-models.sh standard
+  refute_output --partial "Fable bills"
+  run scripts/set-models.sh max
+  assert_output --partial "Fable bills usage credits"
+  mkdir -p "$HOME/.claude" && echo '{"effortLevel": "high"}' >"$HOME/.claude/settings.json"
+  run scripts/set-models.sh standard
+  assert_output --partial "warn: effortLevel in ~/.claude/settings.json is ignored"
 }
 
 @test "usage errors exit 2: no args, --cross alone, unknown profile, two profiles" {

@@ -8,6 +8,7 @@ setup() {
   isolate
   installed_target
   cd "$TARGET" || exit 1
+  extras_on verify-review
   mkdir -p src
   printf '%s\n' "line one" "line two" "const total = items.reduce((a, b) => a + b, 0);" "line four" \
     "line five" "line six" "line seven" "line eight" "line nine" "line ten" >src/app.js

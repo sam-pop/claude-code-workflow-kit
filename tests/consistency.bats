@@ -18,10 +18,10 @@ shell_files() { git ls-files -co --exclude-standard -- '*.sh' '*.bash' '*.bats' 
   assert_output 1
 }
 
-@test "the minimum Claude Code version is the same in README and doctor.sh" {
-  v=$(grep -oE 'older than [0-9]+\.[0-9]+\.[0-9]+' template/scripts/doctor.sh | head -1 | awk '{print $3}')
+@test "the minimum Claude Code version is the same in README and set-models.sh" {
+  v=$(grep -oE 'older than [0-9]+\.[0-9]+\.[0-9]+' template/.claude/optional/set-models.sh | head -1 | awk '{print $3}')
   [[ -n "$v" ]]
-  grep -q "(2, 1, 292)" template/scripts/doctor.sh
+  grep -q "(2, 1, 292)" template/.claude/optional/set-models.sh
   [[ "$v" == 2.1.292 ]]
   grep -q "v$v or later" README.md
   grep -q "Claude%20Code-v$v" README.md
@@ -29,7 +29,7 @@ shell_files() { git ls-files -co --exclude-standard -- '*.sh' '*.bash' '*.bats' 
 
 @test "README profile table matches the profiles in set-models.sh" {
   for p in lite standard max; do
-    want=$(awk -v p="  $p)" '$0 == p {on=1; next} on && /;;/ {exit} on' template/scripts/set-models.sh \
+    want=$(awk -v p="  $p)" '$0 == p {on=1; next} on && /;;/ {exit} on' template/.claude/optional/set-models.sh \
       | grep -oE '(planner|writer|reviewer|auditor)=[a-z]+/[a-z]+' | cut -d= -f2 | tr '\n' ' ' | sed 's/ $//')
     row=$(grep -E "^\| \*\*$p\*\*" README.md | head -1 | cut -d'|' -f3-6 | tr '[:upper:]' '[:lower:]' | sed 's/ \/ /\//g; s/|/ /g' | tr -s ' ' | sed 's/^ //; s/ $//')
     assert_equal "$row" "$want"
@@ -41,7 +41,7 @@ shell_files() { git ls-files -co --exclude-standard -- '*.sh' '*.bash' '*.bats' 
 }
 
 @test "scripts are executable in the working tree and in the index" {
-  for f in template/scripts/*.sh scripts/install.sh scripts/tools.sh tests/stubs/*; do
+  for f in template/scripts/*.sh template/.claude/optional/*.sh scripts/install.sh scripts/tools.sh tests/stubs/*; do
     [[ -x "$f" ]] || fail "$f is not executable"
     mode=$(git ls-files -s -- "$f" | awk '{print $1}')
     [[ -z "$mode" || "$mode" == 100755 ]] || fail "$f has mode $mode in the index"
@@ -107,9 +107,27 @@ PY
 }
 
 @test "every path kit 1.4 installed is still under template/ (no surprise retirements)" {
+  # A 1.4 path is a template/ file, the active path of an extra's file, or retired on purpose.
+  retired=" handoff.md docs/glossary.md "
   while IFS= read -r p; do
-    [[ -f "template/$p" ]] || fail "template/$p is missing (installed by 1.4)"
+    [[ -f "template/$p" ]] && continue
+    case "$p" in
+      scripts/*.sh) [[ -f "template/.claude/optional/${p#scripts/}" ]] && continue ;;
+      .claude/agents/*.md) [[ -f "template/.claude/optional/${p#.claude/agents/}" ]] && continue ;;
+    esac
+    [[ "$retired" == *" $p "* ]] && continue
+    fail "template/$p is missing (installed by 1.4)"
   done <tests/fixtures/kit-1.4-files.txt
+}
+
+@test "every extra's file in extras.sh exists in template/.claude/optional/, and nothing else is there" {
+  listed=$(sed -n '/^files_of() {/,/^}/p' template/scripts/extras.sh | grep -oE '[a-z-]+\.(sh|md)' | sort)
+  [[ -n "$listed" ]]
+  assert_equal "$(cd template/.claude/optional && find . -type f | sed 's#^\./##' | sort)" "$listed"
+  names=$(sed -n 's/^EXTRAS="\(.*\)"$/\1/p' template/scripts/extras.sh)
+  for x in $names; do
+    sed -n '/^files_of() {/,/^}/p' template/scripts/extras.sh | grep -qE "^ +$x\)" || fail "$x has no files"
+  done
 }
 
 @test "the root dogfood install has not drifted from template/" {
