@@ -8,7 +8,7 @@ Format: `- YYYY-MM-DD (was Oxx) — the decision, stated so it can be checked ag
 
 - {{YYYY-MM-DD}} — Stack: {{language/framework/runtime}}. Hosting: {{where}}. Database: {{which}}.
 - {{YYYY-MM-DD}} — {{e.g. "All verification goes through `scripts/check.sh`; agents never run raw tool commands."}}
-- {{YYYY-MM-DD}} — {{e.g. "Reviewer runs on Fable; planner and writer on Opus."}}
+- {{YYYY-MM-DD}} — Model profile: {{lite | standard | max}} (scripts/set-models.sh). Cross-model review: {{off | on: Codex sees High-risk diffs and each release range, which leave for OpenAI; not available on Review-only}}.
 
 ## Product
 

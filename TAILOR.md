@@ -19,14 +19,14 @@ Build a picture of the repo before touching any kit file. Use the Explore agent 
 Ask only what discovery could not answer, in rounds: every question whose prerequisites are settled goes in the same round, numbered, each with a recommended answer worded so that "yes" accepts it. If the `grilling` skill from mattpocock/skills is installed, use it; its format is the one meant here. Typical questions:
 
 1. Tier (see `docs/rollout.md`): script, solo, shared, or review-only (other people write the code)? This decides which agents exist and whether `handoff.md` is committed. If discovery shows most commits are by people other than the owner, propose review-only.
-2. Model profile (`docs/rollout.md`, Model profiles): **standard** (Sonnet writer, Opus elsewhere; the default) or **max** (Opus writer, Fable reviewer and auditor), depending on what the owner's plan covers. Apply it with `scripts/set-models.sh <profile>` and record it in `docs/decisions.md`.
+2. Model profile (`docs/rollout.md`, Model profiles): **lite** (Sonnet/high planner, writer and reviewer, Opus/high auditor; Pro $20 plans), **standard** (Opus; planner high, writer medium, reviewer high, auditor xhigh; the default) or **max** (Fable/high planner and auditor; Opus writer medium, reviewer high), depending on what the owner's plan covers; and cross-model review: off (recommended) or `--cross`, which sends High-risk diffs and release ranges to OpenAI. Cross-model review is not available on Review-only in 1.4: the script reviews its own repo, not someone else's PR. Apply it with `scripts/set-models.sh <profile> [--cross]` and record it in `docs/decisions.md`.
 3. Any rules you know you want enforced that the repo does not yet show.
 4. Is there a product owner whose decisions must be recorded separately from engineering decisions?
 5. Anything in the repo that is intentionally non-standard and should not be "fixed".
 
 If the owner is not available, take the most reasonable reading, say which reading you took at the top of your report, and proceed.
 
-**If the tier is Review-only, stop here and switch plans.** Do not install hooks, `.claude/settings.json` or `scripts/` into a repo other people commit to (`docs/rollout.md`, Review-only). Instead set up a separate review workspace: copy `.claude/agents/reviewer.md`, `.claude/agents/security-auditor.md` and `docs/conventions.md` into it, tailor those three to the client repo's stack, and write a short `CLAUDE.md` there saying where the client repo is checked out and that reviews use `gh pr diff <n>`. Then go to step 6.
+**If the tier is Review-only, stop here and switch plans.** Do not install hooks, `.claude/settings.json` or `scripts/` into a repo other people commit to (`docs/rollout.md`, Review-only). Instead set up a separate review workspace: copy `.claude/agents/reviewer.md`, `.claude/agents/security-auditor.md` and `docs/conventions.md` into it, then tailor those three to the client repo's stack, and write a short `CLAUDE.md` there saying where the client repo is checked out and that reviews use `gh pr diff <n>`. Then go to step 6.
 
 ## 3. Fill in
 
@@ -58,7 +58,7 @@ Every file in `.claude/agents/` and `CLAUDE.md` is read by a model, not a person
 
 ## 4. Remove
 
-- Delete `TAILOR.md`, `HOW-TO-USE.md` and this kit's `README.md` from the repo. If the repo has no README, write a short one that mentions `CLAUDE.md` and `scripts/check.sh`.
+- Delete `TAILOR.md` and `HOW-TO-USE.md` from the repo (the kit's `README.md` is not installed). If the repo has no README, write a short one that mentions `CLAUDE.md` and `scripts/check.sh`.
 - Delete agent files the tier does not use.
 
 ## 5. Verify

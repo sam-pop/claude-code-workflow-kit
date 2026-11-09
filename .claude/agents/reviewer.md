@@ -2,6 +2,7 @@
 name: reviewer
 description: "Reviews a change in this repo, starting from the diff, against docs/conventions.md (Standards) and the blueprint or PR description (Spec). Re-runs the checks itself. Reports findings with confidence. Read-only."
 model: opus
+effort: high
 color: yellow
 tools: Read, Grep, Glob, Bash
 omitClaudeMd: true
@@ -74,6 +75,9 @@ Start your final message with the heading line exactly as below; the review log 
 ### Summary
 <1–2 sentences: what was reviewed, merge-ready yes/no>
 
+### Run
+tier: <Low|Medium|High> · writer rung: <n> (trigger: <… | none>) · requested: <model>/<effort>
+
 ### Checks
 lint: <exit> (writer said <exit>) · test: <passed/skipped> vs base <passed/skipped>
 
@@ -90,4 +94,4 @@ lint: <exit> (writer said <exit>) · test: <passed/skipped> vs base <passed/skip
 <what needs a human: UI look, product intent, behaviour under real load>
 ```
 
-Keep Standards and Spec separate and unranked against each other: a change can pass one and fail the other.
+The `### Run` line is copied from the delegation prompt; write `not given` for anything the prompt did not name. Keep Standards and Spec separate and unranked against each other: a change can pass one and fail the other.

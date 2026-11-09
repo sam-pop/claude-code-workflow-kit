@@ -26,7 +26,7 @@ changed_files() {
 lint() {
   echo "== lint"
   if [[ $CHANGED -eq 1 ]]; then
-    mapfile -t FILES < <(changed_files)
+    FILES=(); while IFS= read -r f; do FILES+=("$f"); done < <(changed_files)  # bash 3.2: no mapfile
     [[ ${#FILES[@]} -eq 0 ]] && { skip "no changed files"; return; }
     # kit: run the linter on "${FILES[@]}" only, e.g.
     #   npx eslint --max-warnings 0 "${FILES[@]}"      (filter to *.ts,*.tsx first)

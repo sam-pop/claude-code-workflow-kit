@@ -42,7 +42,7 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "reviewer|security-auditor",
+        "matcher": "reviewer|security-auditor|codex-reviewer|writer",
         "hooks": [
           {
             "type": "command",

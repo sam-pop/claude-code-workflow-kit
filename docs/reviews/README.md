@@ -1,6 +1,12 @@
 # Review log
 
-Every reviewer and security-auditor report lands here automatically (`scripts/capture-review.sh`, on the SubagentStop and SubagentHandback hooks; it saves any final message starting `## Review:` or `## Security audit:`), named `<date>-<sha>-<review|security>.md`. This folder is the raw material for the improvement loop; nothing here is edited by agents.
+Every reviewer, security-auditor, codex-reviewer and stuck-writer report lands here automatically (`scripts/capture-review.sh`, on the SubagentStop and SubagentHandback hooks; it saves any final message starting `## Review:`, `## Security audit:`, `## Codex review:` or `## STUCK:`), named `<date>-<sha>-<review|security|codex|stuck>.md`. This folder is the raw material for the improvement loop; nothing here is edited by agents.
+
+Kinds:
+
+- `review`, `security`: the Claude reviewer and auditor. The reviewer's `### Run` line (tier, writer rung and trigger, requested model/effort) is the per-task ladder log; on audits, fill in the `served:` model from `/tasks`.
+- `codex`: the Codex second opinion. Mark its findings the same way as any other; the doctor reports them on their own `codex (30d)` line.
+- `stuck`: a writer that hit a stop rule. These are escalation records, not findings to tick off; the doctor counts them as `escalations (30d)`.
 
 ## What you do with a finding
 
