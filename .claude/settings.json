@@ -3,8 +3,10 @@
     "CLAUDE_CODE_FORK_SUBAGENT": "0"
   },
   "permissions": {
+    "ask": [
+      "Bash(git push:*)"
+    ],
     "deny": [
-      "Bash(git push:*)",
       "Bash(git reset --hard:*)",
       "Bash(git clean:*)",
       "Bash(git branch -D:*)",

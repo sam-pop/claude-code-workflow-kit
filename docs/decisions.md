@@ -8,6 +8,7 @@ These are the design records for the kit itself. Each cites its evidence where o
 
 ## Engineering
 
+- 2026-11-09 — In this repo only (not `template/`), `git push` is an ask rule instead of a deny rule, so every push, release tags included, shows the maintainer an approval prompt. Installed repos keep the deny.
 - 2026-11-09 — The `max` profile and `gpt-6-astra` for release reviews stay, labelled experimental in README, `docs/rollout.md`, `scripts/set-models.sh` and `scripts/codex-review.sh`: no comparative Fable-vs-Opus data exists for planning or auditing, and Astra rests on one secondhand non-coding benchmark. `pin()` is removed from `codex-review.sh`: it only guarded constants.
 - 2026-11-09 — `permissions.deny` blocks what an agent should never do unasked (push, merge, open a PR, move or delete branches and refs, delete, edit, create-and-push or sync the GitHub repo) and stops there: no blanket `git -C`/`git -c` or `gh repo` rules, which block read-only commands and only stop deliberately reworded ones. Deny rules prevent accidents, not attacks.
 - 2026-11-09 — `doctor` warns, not fails, when a tailored repo still has the `TAILOR.md` CI gate, so repos tailored on 1.4 don't go red on upgrade.
