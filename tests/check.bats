@@ -2,7 +2,7 @@
 # template/scripts/check.sh and lint-hook.sh as installed (untailored and tailored), and the kit's
 # own root scripts/check.sh.
 
-# shellcheck disable=SC2153  # KIT and TARGET are set by helpers.bash
+# shellcheck disable=SC2153,SC2016  # KIT and TARGET are set by helpers.bash; sed and printf scripts hold literal $
 load helpers
 
 setup() {
@@ -103,4 +103,38 @@ root_check_repo() {
   run "$R/scripts/check.sh" build
   assert_success
   assert_output --partial "skipped: the kit ships source; nothing to build"
+}
+
+@test "lint hook passes on printable ASCII only, so escapes and control characters never reach Claude (A7)" {
+  sed -i.bak 's/not_configured "lint --changed"/printf "bad \\033[31mfile\\033[0m\\a\\n" >\&2; return 1/' scripts/check.sh
+  rm -f scripts/check.sh.bak
+  echo change >>README.md
+  run hook
+  assert_failure 2
+  assert_output --partial "bad [31mfile[0m"
+  refute_output --partial $'\033'
+  refute_output --partial $'\a'
+}
+
+@test "lint --changed falls back to origin/<base> when there is no local base branch (B9)" {
+  sed -i.bak 's/not_configured "lint --changed"/printf "file: %s\\n" "${FILES[@]}"/' scripts/check.sh
+  rm -f scripts/check.sh.bak
+  git commit -qam "tailor lint --changed"
+  git update-ref refs/remotes/origin/main HEAD
+  git checkout -q -b work
+  echo x >committed.txt && git add committed.txt && git commit -qm c
+  git branch -q -D main
+  run scripts/check.sh lint --changed
+  assert_success
+  assert_output --partial "file: committed.txt"
+}
+
+@test "root check.sh: a bin in node_modules/.bin cannot shadow gitleaks (A12)" {
+  root_check_repo
+  mkdir -p "$R/node_modules/.bin"
+  printf '#!/usr/bin/env bash\necho SHADOW\n' >"$R/node_modules/.bin/gitleaks"
+  chmod +x "$R/node_modules/.bin/gitleaks"
+  use_stub gitleaks
+  run "$R/scripts/check.sh" security
+  refute_output --partial SHADOW
 }

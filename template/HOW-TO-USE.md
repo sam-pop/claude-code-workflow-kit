@@ -51,9 +51,9 @@ The kit ships on the **standard** profile. Switch with `scripts/set-models.sh <l
 |---|---|---|---|---|
 | **lite** (Pro $20 plans) | sonnet/high | sonnet/high | sonnet/high | opus/high |
 | **standard** (default) | opus/high | opus/medium | opus/high | opus/xhigh |
-| **max** (plans with Fable) | fable/high | opus/medium | opus/high | fable/high |
+| **max** (plans with Fable; experimental) | fable/high | opus/medium | opus/high | fable/high |
 
-`--cross` also turns on the codex-reviewer, a Codex second opinion on High-risk diffs and before a release (off by default). It sends those diffs to OpenAI; on client work get the client's OK first. It is not available on Review-only (the script reviews its own repo, not someone else's PR). Fable bills usage credits on Pro and standard Team plans from the first request, and `claude -p` does so without asking; set a cap in `/usage-credits`. Review effort scales with risk and the writer escalates when stuck: both are defined in `CLAUDE.md` (Workflow), which needs Claude Code v2.1.292 or later. Details and sources: `docs/rollout.md`, Model profiles, and [the research report](https://github.com/sam-pop/claude-code-workflow-kit/blob/main/docs/research/coding-agent-model-effort-combos.md).
+`--cross` also turns on the codex-reviewer, a Codex second opinion on High-risk diffs and before a release (off by default). It sends those diffs to OpenAI; on client work get the client's OK first. It needs gitleaks (it refuses to send anything without it) and refuses when the change edits its own script or agent file; the reviewer checklist it sends comes from the base branch, not the change. It is not available on Review-only (the script reviews its own repo, not someone else's PR). Fable bills usage credits on Pro and standard Team plans from the first request, and `claude -p` does so without asking; set a cap in `/usage-credits`. Review effort scales with risk and the writer escalates when stuck: both are defined in `CLAUDE.md` (Workflow), which needs Claude Code v2.1.292 or later. Details and sources: `docs/rollout.md`, Model profiles, and [the research report](https://github.com/sam-pop/claude-code-workflow-kit/blob/main/docs/research/coding-agent-model-effort-combos.md).
 
 ## Daily
 
@@ -105,7 +105,8 @@ Then open Claude Code in the repo and say: **Read .claude/kit-upgrade.md**. That
 
 ## What you own
 
-- **Pushes and merges.** The kit's deny rules stop agents from pushing, resetting or cleaning. They prevent accidents but aren't a sandbox: a reworded command can slip past them.
+- **Pushes and merges.** The kit's deny rules stop agents from pushing, resetting, cleaning, moving branches (`git branch -f`, `git update-ref`), and from `gh pr create`, `gh pr merge`, `gh repo create`, `gh repo sync`, `gh repo edit`, `gh repo archive` and `gh repo delete`. They prevent accidents but aren't a sandbox: a reworded command can slip past them.
+- **The Stop warning.** After each turn, if files changed since `scripts/check.sh all` last passed, Claude Code shows a one-line warning with the count and up to three names. Committing makes it go quiet even when checks did not pass on that commit. If `check.sh all` cannot pass on your machine (for example semgrep is not installed), the warning appears on every turn with changes: install the tool or make that check `skip` with a reason.
 - **Open items** and **accepted risks** (a Critical or High security finding you choose not to fix goes in `docs/decisions.md` with a date and reason).
 - **The reviewer's two lists.** Add what you have corrected twice; prune quarterly.
 

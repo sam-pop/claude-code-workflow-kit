@@ -2,6 +2,9 @@
 # One entry point for every verification. Agents, hooks and CI call this; nothing calls raw tools.
 # Usage: scripts/check.sh <lint|test|build|security|doctor|all> [--changed]
 #   --changed  limit lint to files changed vs the base branch, including untracked files (hook fast path)
+# Exit codes: 0 pass, 1 a check failed or a tool is missing, 2 usage.
+# Environment: BASE_BRANCH (default: origin/HEAD, else main; origin/<base> when there is no local
+# branch); KIT_EXPECT_BASH (CI: when set, `test` prints the bash version found on PATH first).
 #
 # The kit's own copy (tailored from template/scripts/check.sh). A missing tool is a FAIL with the
 # command that installs it, never a silent skip.
@@ -18,22 +21,34 @@ skip() {
   return 0
 }
 
-# Maintainer tools: npm ci (bats, markdownlint-cli2) and scripts/tools.sh install (the rest).
-for d in "$PWD/node_modules/.bin" "$PWD/.tools/bin"; do
-  [[ -d "$d" ]] && PATH="$d:$PATH"
-done
+# Maintainer tools: scripts/tools.sh install puts pinned binaries in .tools/bin (first on PATH);
+# npm ci installs bats and markdownlint-cli2, called by path so no package's bin shadows a system tool.
+[[ -d "$PWD/.tools/bin" ]] && PATH="$PWD/.tools/bin:$PATH"
 export PATH
+BATS="$PWD/node_modules/.bin/bats"
+MDLINT="$PWD/node_modules/.bin/markdownlint-cli2"
 need() { # tool hint
-  command -v "$1" >/dev/null && return 0
-  echo "FAIL: $1 not installed ($2)" >&2
+  [[ "$1" == */* ]] && [[ -x "$1" ]] && return 0
+  [[ "$1" != */* ]] && command -v "$1" >/dev/null && return 0
+  echo "FAIL: ${1##*/} not installed ($2)" >&2
   return 1
 }
 NPM_HINT="run: npm ci"
 TOOLS_HINT="run: scripts/tools.sh install"
 
+base_ref() { # the local base branch, else origin/<base>
+  local r
+  for r in "$BASE_BRANCH" "origin/$BASE_BRANCH"; do
+    git rev-parse --verify --quiet "$r^{commit}" >/dev/null 2>&1 && echo "$r" && return 0
+  done
+  return 1
+}
+
 changed_files() {
+  local base
+  base=$(base_ref) || base=""
   {
-    git diff --name-only --diff-filter=ACMR "$BASE_BRANCH"... 2>/dev/null
+    [[ -n "$base" ]] && git diff --name-only --diff-filter=ACMR "$base"... 2>/dev/null
     git diff --name-only --diff-filter=ACMR
     git diff --name-only --cached --diff-filter=ACMR
     git ls-files --others --exclude-standard
@@ -45,7 +60,6 @@ all_files() { git ls-files -co --exclude-standard | sort -u; }
 # Reads paths on stdin; prints the existing ones that each linter takes.
 shell_files() { grep -E '\.(sh|bash|bats)$|^tests/stubs/[^/]+$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
 md_files() { grep -E '\.md$' | grep -vE '^docs/research/|^docs/reviews/[^/]*-[^/]*\.md$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
-md_link_files() { md_files | grep -vE '(^|/)docs/reviews/'; }
 workflow_files() { grep -E '(^|/)\.github/workflows/[^/]+\.ya?ml$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
 
 lint_files() { # reads paths on stdin
@@ -53,14 +67,14 @@ lint_files() { # reads paths on stdin
   list=$(cat)
   while IFS= read -r f; do [[ -n "$f" ]] && sh+=("$f"); done < <(shell_files <<<"$list")
   while IFS= read -r f; do [[ -n "$f" ]] && md+=("$f"); done < <(md_files <<<"$list")
-  while IFS= read -r f; do [[ -n "$f" ]] && mdl+=("$f"); done < <(md_link_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && mdl+=("$f"); done < <(md_files <<<"$list") # the same set: saved reports are left out
   while IFS= read -r f; do [[ -n "$f" ]] && wf+=("$f"); done < <(workflow_files <<<"$list")
   if ((${#sh[@]})); then
     if need shellcheck "$TOOLS_HINT"; then shellcheck "${sh[@]}" || rc=1; else rc=1; fi
     if need shfmt "$TOOLS_HINT"; then shfmt -d "${sh[@]}" || rc=1; else rc=1; fi
   fi
   if ((${#md[@]})); then
-    if need markdownlint-cli2 "$NPM_HINT"; then markdownlint-cli2 "${md[@]}" >/dev/null 2>"$TMP_LINT" || {
+    if need "$MDLINT" "$NPM_HINT"; then "$MDLINT" "${md[@]}" >/dev/null 2>"$TMP_LINT" || {
       cat "$TMP_LINT" >&2
       rc=1
     }; else rc=1; fi
@@ -103,8 +117,8 @@ test_() {
   if [[ -n "${KIT_EXPECT_BASH:-}" ]]; then
     echo "bash on PATH: $(bash -c 'echo $BASH_VERSION')"
   fi
-  need bats "$NPM_HINT" || return 1
-  bats --formatter tap -r tests | awk '
+  need "$BATS" "$NPM_HINT" || return 1
+  "$BATS" --formatter tap -r tests | awk '
     { print }
     /^ok / { if (/ # skip/) s++; else p++ }
     /^not ok / { f++ }
@@ -136,7 +150,7 @@ security() {
   return $rc
 }
 
-doctor() { DOCTOR_SKIP_PATHS="template tests" bash scripts/doctor.sh; }
+doctor() { bash scripts/doctor.sh; }
 
 run_all() {
   local rc=0 t

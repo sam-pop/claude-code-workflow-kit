@@ -7,9 +7,12 @@
 #   standard  opus/high    opus/medium   opus/high    opus/xhigh
 #   max       fable/high   opus/medium   opus/high    fable/high
 #
-#   lite is for Pro ($20) plans; never set Sonnet below high (medium drops ~15 points).
+#   lite is for Pro ($20) plans; never set Sonnet below high (medium: -7 to -15 points). max is experimental.
 #   --cross: enable codex-reviewer (Codex second opinion, off by default)
 #
+# max is a hypothesis, not a measured gain: no comparative Fable-vs-Opus data exists for planning or
+# security auditing (only within-model effort deltas), and Fable barely gains from effort.
+# Exit codes: 0 ok, 1 --cross without a codex-reviewer.md to enable, 2 usage.
 # Each line is model/effort. Aliases track the latest model of each family. Fable bills usage credits on
 # some plans; interactive sessions ask first, `claude -p` and SDK runs do not (see docs/rollout.md).
 # The writer's effort is the first rung of the escalation ladder in CLAUDE.md (Workflow).

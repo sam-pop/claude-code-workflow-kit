@@ -94,8 +94,8 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   assert_success
   assert_line --regexp '^replaced: +scripts/doctor.sh$'
   cmp "$TARGET/scripts/doctor.sh" "$KIT2/template/scripts/doctor.sh"
-  # chmod +x at the end of install adds x bits but never widens group/other read on a 700 file
-  assert_equal "$(perms "$TARGET/scripts/doctor.sh")" 711
+  # x bits are added only where the file can be read: a 700 file stays 700
+  assert_equal "$(perms "$TARGET/scripts/doctor.sh")" 700
 }
 
 @test "upgrade: a tailored file the kit changed gets a .kit sibling and is not touched" {
@@ -276,4 +276,93 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   run "$KIT2/scripts/install.sh" "$TARGET"
   assert_failure 1
   assert_output --partial "the kit has no template/ directory"
+}
+
+@test "install leaves the mode of the target's own scripts alone (A9)" {
+  mk_kit
+  mk_target
+  mkdir -p "$TARGET/scripts"
+  printf 'echo deploy\n' >"$TARGET/scripts/deploy-prod.sh"
+  chmod 644 "$TARGET/scripts/deploy-prod.sh"
+  run "$KIT/scripts/install.sh" "$TARGET"
+  assert_success
+  [[ ! -x "$TARGET/scripts/deploy-prod.sh" ]]
+  [[ -x "$TARGET/scripts/check.sh" ]]
+}
+
+@test "a symlinked directory leading out of the target refuses the run and writes nothing outside (A9)" {
+  mk_kit
+  mk_target
+  out="$BATS_TEST_TMPDIR/outside"
+  mkdir -p "$out"
+  ln -s "$out" "$TARGET/docs"
+  run "$KIT/scripts/install.sh" "$TARGET"
+  assert_failure 1
+  assert_output --partial "resolve outside the target"
+  assert_output --partial "docs/conventions.md"
+  assert_equal "$(find "$out" -type f | wc -l | tr -d ' ')" 0
+  [[ ! -e "$TARGET/.claude/kit-manifest" ]]
+}
+
+@test "more than one target directory is a usage error (B13)" {
+  mk_kit
+  mk_target a
+  mk_target b
+  run "$KIT/scripts/install.sh" "$BATS_TEST_TMPDIR/a" "$BATS_TEST_TMPDIR/b"
+  assert_failure 2
+  [[ ! -e "$BATS_TEST_TMPDIR/b/CLAUDE.md" ]]
+}
+
+@test "a .kit symlink to a file outside the target refuses the run and leaves the file alone (A9, .kit)" {
+  mk_target
+  out="$BATS_TEST_TMPDIR/outside"
+  mkdir -p "$out"
+  echo "keep me" >"$out/victim.txt"
+  echo "mine" >"$TARGET/CLAUDE.md"
+  ln -s "$out/victim.txt" "$TARGET/CLAUDE.md.kit"
+  run "$KIT/scripts/install.sh" "$TARGET"
+  assert_failure 1
+  assert_output --partial "resolve outside the target"
+  assert_output --partial "CLAUDE.md.kit"
+  assert_equal "$(cat "$out/victim.txt")" "keep me"
+  [[ ! -e "$TARGET/.claude/kit-manifest" ]]
+}
+
+@test "a dangling .kit symlink leading outside the target creates nothing there (A9, dangling .kit)" {
+  mk_target
+  out="$BATS_TEST_TMPDIR/outside"
+  mkdir -p "$out"
+  echo "mine" >"$TARGET/CLAUDE.md"
+  ln -s "$out/created.md" "$TARGET/CLAUDE.md.kit"
+  run "$KIT/scripts/install.sh" "$TARGET"
+  assert_failure 1
+  assert_output --partial "CLAUDE.md.kit"
+  [[ ! -e "$out/created.md" ]]
+}
+
+@test "upgrade: a state file symlinked outside the target refuses the run (A9, state files)" {
+  mk_target
+  "$KIT/scripts/install.sh" "$TARGET" >/dev/null
+  out="$BATS_TEST_TMPDIR/outside"
+  mkdir -p "$out"
+  for f in kit-version kit-upgrade.md; do
+    rm -f "$TARGET/.claude/$f"
+    ln -s "$out/$f" "$TARGET/.claude/$f"
+    run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+    assert_failure 1
+    assert_output --partial ".claude/$f"
+    [[ ! -e "$out/$f" ]]
+    rm "$TARGET/.claude/$f"
+  done
+}
+
+@test "a kit copy whose scripts lost their modes still installs executable scripts" {
+  plain="$BATS_TEST_TMPDIR/plain"
+  cp -R "$KIT" "$plain"
+  rm -rf "$plain/.git"
+  chmod 644 "$plain"/template/scripts/*.sh
+  mk_target
+  run "$plain/scripts/install.sh" "$TARGET"
+  assert_success
+  for f in "$TARGET"/scripts/*.sh; do [[ -x "$f" ]] || fail "not executable: $f"; done
 }

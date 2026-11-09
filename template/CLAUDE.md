@@ -58,7 +58,7 @@ The tier sets the reviewer's effort. Pass it as the Agent tool's `effort` parame
 |---|---|---|
 | Low | Small fix in the main session | `medium` |
 | Medium | Normal blueprint change | `high` (frontmatter default) |
-| High | Auth, tenancy, money, personal data, secrets, migrations or destructive writes, concurrency, `.claude/` `scripts/` or CI, or any escalated writer output | `xhigh` |
+| High | Auth, tenancy, money, personal data, secrets, migrations or destructive writes, concurrency, `.claude/` `scripts/` or CI, or any escalated writer output | `xhigh` (a hypothesis: `docs/rollout.md` has the measure that drops it) |
 
 On the **lite** profile (`.claude/agents/writer.md` has `model: sonnet`) Low and Medium use the reviewer as defined (sonnet/high); High passes Agent `model: opus, effort: medium`.
 

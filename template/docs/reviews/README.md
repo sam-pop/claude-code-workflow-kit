@@ -46,4 +46,4 @@ Pre-committed thresholds (3 and 2) are deliberate: change them in `docs/decision
 
 ## Privacy
 
-Reports quote code. On a Shared repo, that is fine inside the repo; never paste one into a chat, ticket or email outside it without reading it first.
+Reports quote code. On a Shared repo, that is fine inside the repo; never paste one into a chat, ticket or email outside it without reading it first. A quote never carries a secret value: the reviewer replaces it with `…`, and the elided quote still verifies.

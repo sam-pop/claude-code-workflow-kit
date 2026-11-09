@@ -19,7 +19,7 @@ scripts/check.sh lint      # shellcheck, shfmt, markdownlint-cli2, lychee (offli
 scripts/check.sh test      # bats tests/
 scripts/check.sh build     # skipped: the kit ships source
 scripts/check.sh security  # gitleaks, tracked sensitive files
-scripts/check.sh doctor    # kit hygiene (template/ and tests/ left out of the open-item scan)
+scripts/check.sh doctor    # kit hygiene
 scripts/check.sh all       # everything
 ```
 
@@ -67,7 +67,7 @@ The tier sets the reviewer's effort. Pass it as the Agent tool's `effort` parame
 |---|---|---|
 | Low | Small fix in the main session | `medium` |
 | Medium | Normal blueprint change | `high` (frontmatter default) |
-| High | Auth, tenancy, money, personal data, secrets, migrations or destructive writes, concurrency, `.claude/` `scripts/` or CI, or any escalated writer output | `xhigh` |
+| High | Auth, tenancy, money, personal data, secrets, migrations or destructive writes, concurrency, `.claude/` `scripts/` or CI, or any escalated writer output | `xhigh` (a hypothesis: `template/docs/rollout.md` has the measure that drops it) |
 
 On the **lite** profile (`.claude/agents/writer.md` has `model: sonnet`) Low and Medium use the reviewer as defined (sonnet/high); High passes Agent `model: opus, effort: medium`.
 

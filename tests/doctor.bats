@@ -48,9 +48,9 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   refute_output --partial "is referenced"
 }
 
-@test "an undeclared open-item ID in code fails" {
+@test "an undeclared open-item ID in a kit-owned file fails" {
   tailor
-  echo "# see O42" >>scripts/lint-hook.sh
+  echo "See O42." >>docs/conventions.md
   git add -A && git commit -qm o42
   run scripts/check.sh doctor
   assert_failure 1
@@ -70,10 +70,10 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
 
 @test "DOCTOR_SKIP_PATHS leaves the named paths out of the O-id scan" {
   tailor
-  mkdir -p vendor/kit && echo "O77 example" >vendor/kit/HOW.md
-  mkdir -p other && echo "O78 example" >other/x.md
+  echo "O77 example" >docs/vendored.md
+  mkdir -p .claude/agents/other && echo "O78 example" >.claude/agents/other.md
   git add -A && git commit -qm vendored
-  run env DOCTOR_SKIP_PATHS="vendor other" bash scripts/doctor.sh
+  run env DOCTOR_SKIP_PATHS="docs/vendored.md .claude/agents/other.md" bash scripts/doctor.sh
   assert_success
   run bash scripts/doctor.sh
   assert_output --partial "O77 is referenced"
@@ -138,11 +138,13 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   assert_output --partial "codex (30d): reports 2 fixed 1 dismissed 1"
 }
 
-@test "warns when a tailored check.sh does not call check-stamp" {
+@test "warns when a tailored check.sh does not run check-stamp record, even if a comment names it (Opus 50)" {
   tailor
-  sed -i.bak '/check-stamp/d' scripts/check.sh && rm -f scripts/check.sh.bak
+  sed -i.bak '/check-stamp\.sh record/d' scripts/check.sh && rm -f scripts/check.sh.bak
+  grep -q 'check-stamp' scripts/check.sh
   run bash scripts/doctor.sh
-  assert_output --partial "warn: scripts/check.sh does not call check-stamp"
+  assert_output --partial "warn: scripts/check.sh does not run scripts/check-stamp.sh record"
+  assert_output --partial "https://github.com/sam-pop/claude-code-workflow-kit/blob/main/CHANGELOG.md"
 }
 
 @test "review stats count incomplete reports and unverified quotes" {
@@ -152,4 +154,60 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   printf -- '- [ ] [90] b\nstatus: complete\nquotes: 0 verified, 1 unverified, 1 unquoted\n' >docs/reviews/2026-01-02-000000-abc-review.md
   run bash scripts/doctor.sh
   assert_output --partial "unmarked: 2  incomplete: 1  unverified quotes: 3"
+}
+
+@test "no false O-id FAILs from compiler flags, product names or files the kit does not own (B4)" {
+  tailor
+  printf 'CFLAGS = -O2\n' >Makefile
+  echo "Office O365 licences" >README.md
+  echo "Build with -O2 or -O3, never O0-style names like xO5." >>docs/conventions.md
+  mkdir -p src && echo "// see O99" >src/app.c
+  git add -A && git commit -qm flags
+  run bash scripts/doctor.sh
+  assert_success
+  refute_output --partial "is referenced"
+}
+
+@test "the review stats count only reports from the last 30 days (M6)" {
+  tailor
+  mkdir -p docs/reviews
+  printf -- '- [ ] [90] a\n' >docs/reviews/2020-01-01-000000-abc-review.md
+  printf -- '- [ ] [90] b\n' >docs/reviews/2026-01-01-000000-abc-review.md
+  touch -t 202001010000 docs/reviews/2020-01-01-000000-abc-review.md
+  run bash scripts/doctor.sh
+  assert_output --partial "reviews (30d): 1 "
+}
+
+@test "a tailored repo that kept the TAILOR.md CI gate gets a warning, not a FAIL; removing the gate clears it (A6)" {
+  tailor
+  git rm -q TAILOR.md && git commit -qm "tailoring done"
+  run bash scripts/doctor.sh
+  assert_success
+  assert_output --partial "warn: the untailored-kit gate (hashFiles('TAILOR.md')) is still in: .github/workflows/check.yml"
+  python3 - .github/workflows/check.yml <<'PY2'
+import re, sys
+p = sys.argv[1]
+s = open(p).read()
+s = re.sub(r"      - name: Kit not tailored yet\n(        .*\n)+", "", s)
+s = "\n".join(l for l in s.split("\n") if "if: hashFiles('TAILOR.md')" not in l)
+open(p, "w").write(s)
+PY2
+  run bash scripts/doctor.sh
+  assert_success
+  refute_output --partial "untailored-kit gate"
+}
+
+@test "CRLF frontmatter is read (portable, no GNU sed escape) (B10)" {
+  tailor
+  scripts/set-models.sh lite >/dev/null
+  sed -i.bak 's/^effort: high$/effort: medium/' .claude/agents/writer.md && rm -f .claude/agents/writer.md.bak
+  awk '{ printf "%s\r\n", $0 }' .claude/agents/writer.md >w && mv w .claude/agents/writer.md
+  run bash scripts/doctor.sh
+  assert_output --partial "warn: writer is sonnet at effort: medium"
+}
+
+@test "warns when a non-Anthropic provider is selected (C13)" {
+  tailor
+  run env CLAUDE_CODE_USE_BEDROCK=1 bash scripts/doctor.sh
+  assert_output --partial "warn: CLAUDE_CODE_USE_BEDROCK is set"
 }

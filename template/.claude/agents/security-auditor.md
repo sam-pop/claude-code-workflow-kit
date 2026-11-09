@@ -1,6 +1,6 @@
 ---
 name: security-auditor
-description: "Audits this repo's security as a whole system, not a diff: trust boundaries, authorization, tenancy, data flows, secrets, logging. Read-only. Run before each release and quarterly on Shared and Review-only repos, and on a sensitive change when the owner asks."
+description: "Audits this repo's security as a whole system, not a diff: trust boundaries, authorization, tenancy, data flows, secrets, logging. No edit tools; Bash limited by instruction. Run before each release and quarterly on Shared and Review-only repos, and on a sensitive change when the owner asks."
 model: opus
 effort: xhigh
 color: red

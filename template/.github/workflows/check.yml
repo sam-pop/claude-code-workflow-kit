@@ -28,6 +28,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       # Untailored kit (TAILOR.md still present): checks are unconfigured by design, so skip them.
+      # Tailoring deletes this step and every hashFiles('TAILOR.md') line (TAILOR.md step 4; doctor checks).
       - name: Kit not tailored yet
         if: hashFiles('TAILOR.md') != ''
         run: echo "::notice::TAILOR.md is present, so this is the untailored kit. Checks run once TAILOR.md has been followed and deleted."

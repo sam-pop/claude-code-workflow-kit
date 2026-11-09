@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Kit hygiene. Called by `scripts/check.sh doctor` and `all`. Exits non-zero on any FAIL.
-# DOCTOR_SKIP_PATHS: space-separated paths the O-id scan (check 3) leaves out, e.g. a vendored copy
-# of the kit's own template (DOCTOR_SKIP_PATHS=template).
+# Kit hygiene. Called by `scripts/check.sh doctor` and `all`.
+# Usage: scripts/doctor.sh   Exit codes: 0 no FAIL (warnings allowed), 1 any FAIL.
+# Environment: DOCTOR_SKIP_PATHS, space-separated path prefixes the O-id scan (check 3) leaves out;
+# read-only checks of CLAUDE_CODE_EFFORT_LEVEL, CLAUDE_CODE_SUBAGENT_MODEL_FORCE and the provider
+# variables CLAUDE_CODE_USE_BEDROCK, CLAUDE_CODE_USE_VERTEX and CLAUDE_CODE_USE_FOUNDRY (check 6).
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 rc=0
@@ -30,12 +32,19 @@ fi
 left=$(grep -lE '(^|[^$])\{\{[^}]+\}\}|<!-- kit:' ${KIT_FILES[@]+"${KIT_FILES[@]}"} 2>/dev/null | grep -vE 'docs/reviews/README.md')
 [[ -n "$left" ]] && fail "untailored kit content in: $(tr '\n' ' ' <<<"$left")"
 
-# 3. Every O-id used in kit files or code comments exists in open.md or decisions.md.
+# 3. Every O-id used in a kit-owned file exists in open.md or decisions.md. An ID stands alone: not
+# after a letter, digit, `_` or `-` (so -O2 is a compiler flag), and not followed by one.
+oids() { grep -ohE '(^|[^A-Za-z0-9_-])O[0-9]+([^A-Za-z0-9_-]|$)' "$@" 2>/dev/null | grep -oE 'O[0-9]+' | sort -u; }
 if [[ -f docs/open.md ]]; then
-  known=$(grep -ohE '\bO[0-9]+\b' docs/open.md docs/decisions.md 2>/dev/null | sort -u)
-  skip=()
-  for p in ${DOCTOR_SKIP_PATHS:-}; do skip+=(":!$p"); done
-  used=$(git grep -IohE '\bO[0-9]+\b' -- ':!docs/reviews' ':!docs/research' ':!TAILOR.md' ':!HOW-TO-USE.md' ':!README.md' ':!CHANGELOG.md' ':!scripts/doctor.sh' ${skip[@]+"${skip[@]}"} 2>/dev/null | sort -u)
+  known=$(oids docs/open.md docs/decisions.md)
+  scan=()
+  for f in CLAUDE.md handoff.md docs/*.md .claude/agents/*.md .claude/optional/*.md; do
+    [[ -f "$f" ]] || continue
+    for p in ${DOCTOR_SKIP_PATHS:-}; do [[ "$f" == "$p" || "$f" == "${p%/}/"* ]] && continue 2; done
+    scan+=("$f")
+  done
+  used=""
+  ((${#scan[@]})) && used=$(oids "${scan[@]}")
   for id in $used; do grep -qx "$id" <<<"$known" || fail "$id is referenced but is in neither docs/open.md nor docs/decisions.md"; done
 
   # 4. Open items age. Format: - **O12** (opened 2026-10-01, decide by 2026-11-01, owner) — ...
@@ -74,10 +83,15 @@ fi
 for f in /etc/claude-code/managed-settings.json "/Library/Application Support/ClaudeCode/managed-settings.json" "$HOME/.claude/settings.json" .claude/settings*.json; do
   [[ -f "$f" ]] && grep -q '"maxEffortLevel"' "$f" && warn "maxEffortLevel in $f silently lowers xhigh"
 done
+for v in CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY; do
+  [[ -n "${!v:-}" ]] && warn "$v is set: model aliases (opus, sonnet) can map to older models on that provider, and effort levels it lacks fall back silently; check the provider's alias table"
+done
+# Frontmatter value of $2 in agent file $1 (CRLF tolerated; portable to BSD sed).
+front() { tr -d '\r' <"$1" | sed -n '1,/^---$/{s/^'"$2"':[[:space:]]*//p;}' | head -1; }
 for role in planner writer reviewer security-auditor; do
   f=".claude/agents/$role.md"
   [[ -f "$f" ]] || continue
-  e=$(sed -n '1,/^---\r\{0,1\}$/{s/^effort:[[:space:]]*//p;}' "$f" | tr -d '\r' | head -1)
+  e=$(front "$f" effort)
   if [[ -z "$e" ]]; then
     warn "$role has no effort: run scripts/set-models.sh <profile>"
   elif [[ "$e" == max ]]; then
@@ -87,9 +101,9 @@ for role in planner writer reviewer security-auditor; do
   fi
 done
 for f in .claude/agents/*.md; do
-  m=$(sed -n '1,/^---\r\{0,1\}$/{s/^model:[[:space:]]*//p;}' "$f" | tr -d '\r' | head -1)
-  e=$(sed -n '1,/^---\r\{0,1\}$/{s/^effort:[[:space:]]*//p;}' "$f" | tr -d '\r' | head -1)
-  [[ "$m" == sonnet && ("$e" == medium || "$e" == low) ]] && warn "$(basename "$f" .md) is sonnet at effort: $e; never set Sonnet below high (medium drops ~15 points)"
+  m=$(front "$f" model)
+  e=$(front "$f" effort)
+  [[ "$m" == sonnet && ("$e" == medium || "$e" == low) ]] && warn "$(basename "$f" .md) is sonnet at effort: $e; never set Sonnet below high (medium dropped ~7 to ~15 points on Anthropic's benchmarks)"
 done
 if grep -lE '^model:[[:space:]]*fable' .claude/agents/*.md >/dev/null 2>&1; then
   echo "note: an agent uses model: fable. Fable bills usage credits on Pro and standard Team plans from the first request; \`claude -p\` bills without asking; background and Remote sessions drop the turn after 5 minutes waiting for consent. Set a cap in /usage-credits."
@@ -98,8 +112,13 @@ fi
 if compgen -G ".github/workflows/*.y*ml" >/dev/null && grep -lE 'CODEX_API_KEY' .github/workflows/*.y*ml >/dev/null 2>&1; then
   warn "CODEX_API_KEY in .github/workflows: OpenAI warns against a job-level CODEX_API_KEY where repo code runs"
 fi
-grep -q 'check-stamp' scripts/check.sh 2>/dev/null \
-  || warn "scripts/check.sh does not call check-stamp: the Stop hook cannot tell when checks passed; see CHANGELOG 1.5 Upgrade notes"
+grep -qE '^[^#]*scripts/check-stamp\.sh record' scripts/check.sh 2>/dev/null \
+  || warn "scripts/check.sh does not run scripts/check-stamp.sh record: the Stop hook cannot tell when checks passed; see the 1.5 Upgrade notes in https://github.com/sam-pop/claude-code-workflow-kit/blob/main/CHANGELOG.md"
+# The untailored-kit CI gate must go with TAILOR.md: otherwise adding a file named TAILOR.md skips CI.
+if [[ ! -f TAILOR.md ]] && compgen -G ".github/workflows/*.y*ml" >/dev/null; then
+  gate=$(grep -lE "if:.*hashFiles\\('TAILOR\\.md'\\)" .github/workflows/*.y*ml 2>/dev/null | tr '\n' ' ')
+  [[ -n "$gate" ]] && warn "the untailored-kit gate (hashFiles('TAILOR.md')) is still in: $gate; delete the 'Kit not tailored yet' step and every if: line that uses it"
+fi
 kits=$(git ls-files -co --exclude-standard '*.kit' 2>/dev/null | wc -l | tr -d ' ')
 [[ "$kits" != 0 ]] && warn "$kits unmerged *.kit file(s): merge each into its original, then delete it"
 [[ -f .claude/kit-upgrade.md ]] && warn "upgrade merge not finished: .claude/kit-upgrade.md is still present (open Claude Code and say: Read .claude/kit-upgrade.md)"

@@ -2,6 +2,9 @@
 # One entry point for every verification. Agents, hooks and CI call this; nothing calls raw tools.
 # Usage: scripts/check.sh <lint|test|build|security|doctor|all> [--changed]
 #   --changed  limit lint to files changed vs the base branch, including untracked files (hook fast path)
+# Exit codes: 0 pass, 1 a check failed, 2 NOT CONFIGURED or usage.
+# Environment: BASE_BRANCH (default: origin/HEAD, else main; origin/<base> when there is no local
+# branch), SEMGREP_CONFIG (default p/default).
 #
 # kit: replace each NOT CONFIGURED line with this repo's real commands. An unconfigured check FAILS
 # (exit 2) on purpose, so nobody can report "lint passed" for a check that never ran. If a check
@@ -23,9 +26,19 @@ skip() {
   return 0
 }
 
+base_ref() { # the local base branch, else origin/<base>
+  local r
+  for r in "$BASE_BRANCH" "origin/$BASE_BRANCH"; do
+    git rev-parse --verify --quiet "$r^{commit}" >/dev/null 2>&1 && echo "$r" && return 0
+  done
+  return 1
+}
+
 changed_files() {
+  local base
+  base=$(base_ref) || base=""
   {
-    git diff --name-only --diff-filter=ACMR "$BASE_BRANCH"... 2>/dev/null
+    [[ -n "$base" ]] && git diff --name-only --diff-filter=ACMR "$base"... 2>/dev/null
     git diff --name-only --diff-filter=ACMR
     git diff --name-only --cached --diff-filter=ACMR
     git ls-files --others --exclude-standard

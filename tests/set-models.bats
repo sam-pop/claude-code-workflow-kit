@@ -63,7 +63,7 @@ field() { awk -v k="$2:" 'NR>1 && /^---/ {exit} $1==k {print $2}' ".claude/agent
 @test "a CRLF agent file round-trips byte-identical (R1-55, R2-55)" {
   scripts/set-models.sh standard >/dev/null
   cp .claude/agents/writer.md "$BATS_TEST_TMPDIR/lf"
-  sed 's/$/\r/' "$BATS_TEST_TMPDIR/lf" >.claude/agents/writer.md
+  awk '{ printf "%s\r\n", $0 }' "$BATS_TEST_TMPDIR/lf" >.claude/agents/writer.md
   cp .claude/agents/writer.md "$BATS_TEST_TMPDIR/crlf"
   scripts/set-models.sh lite >/dev/null
   scripts/set-models.sh standard >/dev/null

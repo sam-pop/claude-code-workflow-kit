@@ -14,6 +14,10 @@
 #   --dry-run   print the classification and write nothing
 # State in the target: .claude/kit-version and .claude/kit-manifest (sha256 of each kit file as
 # installed). An unmodified file is replaced in place on upgrade; a modified one gets a .kit sibling.
+# Writes only inside the target: a destination, .kit sibling or state file whose real path leaves it
+# (a symlinked directory or a symlink) refuses the whole run before anything is written. Only files
+# this run writes get their mode set: executable when the kit's copy is, and every .sh.
+# Exit codes: 0 ok, 1 refused or failed, 2 usage.
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
 TPL="$KIT/template"
@@ -31,7 +35,13 @@ for a in "$@"; do
       sed -n '2,3p' "$0"
       exit 2
       ;;
-    *) TARGET="$a" ;;
+    *)
+      [[ -z "$TARGET" ]] || {
+        echo "one target directory only; got '$TARGET' and '$a'"
+        exit 2
+      }
+      TARGET="$a"
+      ;;
   esac
 done
 [[ -n "$TARGET" ]] || {
@@ -185,6 +195,24 @@ ORDER = ["replaced", "current", "tailored", "tailored (kit unchanged)", "new", "
          "never re-added", "retired"]
 groups = {c: [] for c in ORDER}
 
+# Every path this run could write (each file, its .kit sibling, the state files) must resolve inside
+# the target: a symlinked directory or a symlink, dangling or not, that leads out of it refuses the run.
+outside = []
+for p in [d for rel in files for d in (dst_of(rel), dst_of(rel) + ".kit")] \
+        + [".claude/kit-manifest", ".claude/kit-version", ".claude/kit-upgrade.md"]:
+    real = os.path.realpath(os.path.join(target, p))
+    if real != target and not real.startswith(target + os.sep):
+        outside.append(p)
+if outside:
+    print("refusing: these paths resolve outside the target (a symlink on the way?): "
+          + ", ".join(outside[:5]) + (" …" if len(outside) > 5 else ""))
+    sys.exit(1)
+
+def exec_bits(rel, src, out):  # on a file this run wrote: executable if the kit's copy is, or a .sh
+    if os.stat(src).st_mode & 0o111 or rel.endswith(".sh"):  # (a kit copy that lost its modes)
+        m = os.stat(out).st_mode
+        os.chmod(out, m | (m & 0o444) >> 2)
+
 if dry:
     print("dry run: nothing is written")
 for rel in files:
@@ -202,10 +230,11 @@ for rel in files:
     if cls == "new":
         os.makedirs(os.path.dirname(out), exist_ok=True)
         shutil.copyfile(src, out)
-        shutil.copymode(src, out)
+        exec_bits(rel, src, out)
     elif cls == "replaced":
         with open(src, "rb") as f, open(out, "wb") as g:  # same inode: the file's mode is kept
             g.write(f.read())
+        exec_bits(rel, src, out)
     elif cls == "tailored":
         shutil.copyfile(src, out + ".kit")
 if upgrade:
@@ -263,7 +292,6 @@ if upgrade:
 PY
 
 [[ "$DRY" == 1 ]] && exit 0
-chmod +x "$TARGET"/scripts/*.sh
 echo
 if [[ "$MODE" == upgrade ]]; then
   echo "Next: open Claude Code in $TARGET and say: Read .claude/kit-upgrade.md"

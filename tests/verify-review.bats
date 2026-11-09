@@ -130,7 +130,7 @@ verify() { scripts/verify-review.sh "$REPORT"; }
 }
 
 @test "a finding in a nonexistent file is unverified: file not found" {
-  report $'- [ ] [90] src/ghost.js:1 — wrong\n  > anything'
+  report $'- [ ] [90] src/ghost.js:1 — wrong\n  > anything at all'
   run verify
   assert_failure 1
   assert_line "- unverified [90] src/ghost.js:1 — file not found"
@@ -141,4 +141,48 @@ verify() { scripts/verify-review.sh "$REPORT"; }
   assert_failure 2
   run scripts/verify-review.sh docs/reviews/none.md
   assert_failure 2
+}
+
+@test "a bold label before the path is parsed; a finding with no parsable path is unparsed and an issue (B1)" {
+  report $'- [ ] [90] **Blocking (Data)** `src/app.js:3` — wrong\n  > const total = items.reduce((a, b) => a + b, 0);\n- [ ] [85] **Warning** the whole file is odd\n  > anything at all'
+  run verify
+  assert_failure 1
+  assert_line "quotes: 1 verified, 0 unverified, 0 unquoted, 1 unparsed"
+  assert_line --partial "- unparsed: - [ ] [85] **Warning** the whole file is odd"
+}
+
+@test "a one-token quote under 12 characters is unverified: quote too short (B2)" {
+  report $'- [ ] [90] src/app.js:3 — wrong\n  > );'
+  run verify
+  assert_failure 1
+  assert_line "- unverified [90] src/app.js:3 — quote too short"
+}
+
+@test "coverage matches exact paths on the read: line only (B3)" {
+  mkdir -p lib && echo x >lib/src-app.js
+  report $'- [ ] [90] src/app.js:3 — wrong\n  > const total = items.reduce((a, b) => a + b, 0);' $'read: `lib/src/app.js`, x/src/old.js\nnot read (reason): src/app.js, src/old.js (skipped)'
+  run verify
+  assert_failure 1
+  assert_line --partial "3 not in ### Coverage: lib/src-app.js, src/app.js, src/old.js"
+}
+
+@test "a quote of a removed line verifies only with the (removed) prefix (Opus 55)" {
+  report $'- [ ] [90] src/app.js:4 — wrong\n  > (removed) line four'
+  run verify
+  assert_success
+  report $'- [ ] [90] src/old.js:1 — wrong\n  > old helper'
+  run verify
+  assert_failure 1
+  assert_line "- unverified [90] src/old.js:1 — quote not found within ±3 lines"
+}
+
+@test "a path outside the repository is never opened (A10)" {
+  echo "secret line here" >"$BATS_TEST_TMPDIR/outside.txt"
+  report "- [ ] [90] $BATS_TEST_TMPDIR/outside.txt:1 — wrong"$'\n  > secret line here'
+  run verify
+  assert_failure 1
+  assert_line --partial "path outside the repository"
+  report $'- [ ] [90] ../outside.txt:1 — wrong\n  > secret line here'
+  run verify
+  assert_line --partial "path outside the repository"
 }

@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: "Reviews a change in this repo, starting from the diff, against docs/conventions.md (Standards) and the blueprint or PR description (Spec). Re-runs the checks itself. Reports findings with confidence. Read-only."
+description: "Reviews a change in this repo, starting from the diff, against docs/conventions.md (Standards) and the blueprint or PR description (Spec). Re-runs the checks itself. Reports findings with confidence. No edit tools; Bash limited by instruction."
 model: opus
 effort: high
 color: yellow
@@ -100,6 +100,6 @@ read: <every changed file you read, comma-separated>
 not read (reason): <any changed file you did not read, each with why>
 ```
 
-Each Standards and Spec finding names the full repo-relative `path:line` (or `path:start-end`) and, on the next line, indented, a `>` marker, a space and the exact source text of that line; use `…` for an elision, and prefix `(removed)` when quoting a line the diff deleted. `### Coverage` names every changed file. When the report is saved, `scripts/verify-review.sh` checks each quote against the file and the coverage against the diff, and appends the result.
+Each Standards and Spec finding names the full repo-relative `path:line` (or `path:start-end`) and, on the next line, indented, a `>` marker, a space and the exact source text of that line; use `…` for an elision (and always in place of a secret value: a key, token or password is never copied into the report), and prefix `(removed)` when quoting a line the diff deleted. `### Coverage` names every changed file. When the report is saved, `scripts/verify-review.sh` checks each quote against the file and the coverage against the diff, and appends the result.
 
 The `### Run` line is copied from the delegation prompt; write `not given` for anything the prompt did not name. Keep Standards and Spec separate and unranked against each other: a change can pass one and fail the other.

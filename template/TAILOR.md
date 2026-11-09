@@ -41,8 +41,8 @@ Replace every `{{PLACEHOLDER}}` and delete every `<!-- kit: … -->` comment onc
 - `docs/open.md`: everything discovery left unresolved, plus anything the owner said is undecided.
 - `.claude/agents/*.md`: keep the structure; replace the stack-specific examples in the reviewer's "Subtle violations" and "False positives" lists with ones that fit this stack. Remove layers from the writer's workflow that this repo does not have. In `security-auditor.md`, name the sensitive data classes this repo holds and fill the stack-specific area; delete the file on Script and Solo tiers.
 - `scripts/check.sh security`: pick the dependency-audit command for the stack and the semgrep ruleset; confirm gitleaks and semgrep are installed or add them to the setup instructions in `CLAUDE.md`.
-- `.claude/settings.json`: keep the hooks as they are; they call `scripts/lint-hook.sh` and `scripts/capture-review.sh`. If `check.sh lint --changed` takes over ~10 s, make it faster (lint only the changed files) rather than removing the hook. Add `permissions.deny` rules for anything else in this repo that must never run unattended (a deploy script, a production database CLI).
-- `.github/workflows/check.yml`: install gitleaks and semgrep (already there) and the stack's runtime. Keep `permissions: contents: read`, `persist-credentials: false` and the gitleaks checksum step; pin every action you add to a full commit SHA with the tag in a comment (`uses: owner/action@<40-hex sha> # vX.Y.Z`).
+- `.claude/settings.json`: keep the hooks as they are; they call `scripts/lint-hook.sh` (after edits), `scripts/capture-review.sh` (saves agent reports) and, on Stop, `scripts/check-stamp.sh hook` (warns when files changed since `check.sh all` last passed). If `check.sh lint --changed` takes over ~10 s, make it faster (lint only the changed files) rather than removing the hook. Add `permissions.deny` rules for anything else in this repo that must never run unattended (a deploy script, a production database CLI).
+- `.github/workflows/check.yml`: install gitleaks and semgrep (already there) and the stack's runtime. Keep `permissions: contents: read`, `persist-credentials: false` and the gitleaks checksum step; pin every action you add to a full commit SHA with the tag in a comment (`uses: owner/action@<40-hex sha> # vX.Y.Z`). semgrep is pinned by version only (`pipx install semgrep==…`), not by checksum; say so in the report if the owner wants every CI tool checksum-verified.
 - `.github/dependabot.yml`: keeps the pinned actions current; add the stack's package ecosystem. Delete it if the repo uses another updater (Renovate).
 - Delete `.github/workflows/check.yml` and `.github/dependabot.yml` if the repo is not on GitHub.
 - `handoff.md`: write the first one: what you did, what remains, questions for the owner. Add it to `.gitignore` only if the owner chose solo tier.
@@ -60,6 +60,7 @@ Every file in `.claude/agents/` and `CLAUDE.md` is read by a model, not a person
 ## 4. Remove
 
 - Delete `TAILOR.md` and `HOW-TO-USE.md` from the repo (the kit's `README.md` is not installed). If the repo has no README, write a short one that mentions `CLAUDE.md` and `scripts/check.sh`.
+- In `.github/workflows/check.yml`, delete the "Kit not tailored yet" step and every `if: hashFiles('TAILOR.md') …` line. Left in place, a pull request that adds a file named `TAILOR.md` would skip every check; `doctor` warns while they remain.
 - Delete agent files the tier does not use.
 
 ## 5. Verify

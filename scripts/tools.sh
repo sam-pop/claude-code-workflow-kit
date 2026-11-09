@@ -6,7 +6,8 @@
 # stops with exit 1 and installs nothing for that tool. A tool already installed at its pinned
 # version is left alone. Supported: linux-x64 and darwin-arm64; elsewhere install the tools
 # yourself at the versions `versions` prints and put them on PATH.
-# Exit: 0 ok, 1 download/checksum/platform failure, 2 usage.
+# Exit: 0 ok, 1 download/checksum/unpack/install/platform failure, 2 usage. A failed tool never gets
+# its version marker (.tools/bin/.<tool>.version), so the next run tries it again.
 # Checksum sources: gitleaks and actionlint from the release's checksums file, lychee from the
 # release's per-asset .sha256 files. shellcheck (koalaman/shellcheck) and shfmt (mvdan/sh) publish
 # no checksums file; their pins were computed from the downloads and checked against a second,
@@ -67,21 +68,28 @@ install_one() { # tool version sha url member
     echo "FAIL: $tool $version checksum mismatch (want $want, got $got); nothing installed" >&2
     return 1
   fi
-  mkdir -p "$BIN"
+  # Called as `install_one … || rc=1`, so set -e is off in here: every step is checked by hand, and
+  # the version marker is written last, only after the binary is in place.
+  mkdir -p "$BIN" || return 1
   case "$member" in
-    -) cp "$tmp/download" "$tmp/$tool" ;;
+    -) cp "$tmp/download" "$tmp/$tool" || return 1 ;;
     *)
-      mkdir "$tmp/x"
+      mkdir "$tmp/x" || return 1
       case "$url" in
         *.tar.xz) tar -xJf "$tmp/download" -C "$tmp/x" "$member" ;;
         *) tar -xzf "$tmp/download" -C "$tmp/x" "$member" ;;
-      esac
-      cp "$tmp/x/$member" "$tmp/$tool"
+      esac || {
+        echo "FAIL: $tool $version: could not unpack $member; nothing installed" >&2
+        return 1
+      }
+      cp "$tmp/x/$member" "$tmp/$tool" || return 1
       ;;
   esac
-  chmod 755 "$tmp/$tool"
-  mv "$tmp/$tool" "$BIN/$tool"
-  echo "$version" >"$BIN/.$tool.version"
+  if ! chmod 755 "$tmp/$tool" || ! mv "$tmp/$tool" "$BIN/$tool"; then
+    echo "FAIL: $tool $version: could not install into $BIN" >&2
+    return 1
+  fi
+  echo "$version" >"$BIN/.$tool.version" || return 1
   echo "installed: $tool $version"
 }
 

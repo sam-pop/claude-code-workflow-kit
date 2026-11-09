@@ -59,9 +59,9 @@ Coding agents fail in predictable ways:
 |---|---|---|
 | **Silent decisions** | The agent quietly picks a timeout, a library, a product behaviour nobody asked for | `docs/open.md` holds what is undecided; agents design around it. The writer must list every default it picked. |
 | **Claimed verification** | "All tests pass" when tests were skipped, filtered, or never configured | Unconfigured checks fail by design. The writer pastes real output. The reviewer re-runs the checks and compares. |
-| **Context bloat** | A `CLAUDE.md` that grew into a 300-line changelog, loaded on every turn | `CLAUDE.md` is an index capped at 150 lines and checked in CI. Read-only agents skip it entirely. |
+| **Context bloat** | A `CLAUDE.md` that grew into a 300-line changelog, loaded on every turn | `CLAUDE.md` is an index capped at 150 lines and checked in CI. Agents without edit tools skip it entirely. |
 | **Prompt-encoded linting** | Agents spending expensive tokens on what `grep` could catch | Every rule is either **mechanical** (in `scripts/check.sh`) or **judgment** (for the reviewer). Never both, never neither. |
-| **Self-grading** | The model that wrote the code also decides it's fine | A separate, read-only reviewer with a fresh context reads the diff *before* the plan. |
+| **Self-grading** | The model that wrote the code also decides it's fine | A separate reviewer with no edit tools and a fresh context reads the diff *before* the plan. |
 | **Process theatre** | Rules nobody maintains, metrics nobody reads | Metrics and kill criteria are fixed before you start. If the kit doesn't pay for itself, you shrink it. |
 
 ## Principles
@@ -80,10 +80,10 @@ Coding agents fail in predictable ways:
 flowchart LR
     R[Request] --> S{Size?}
     S -- "1–2 files" --> M[Main session<br/>edits + check.sh all]
-    S -- "3+ files or migration" --> P[Planner<br/>read-only]
+    S -- "3+ files or migration" --> P[Planner<br/>no edit tools]
     P -- "questions + blueprint" --> O((Owner<br/>confirms))
     O --> W[Writer<br/>code, tests, check.sh]
-    M --> V[Reviewer<br/>read-only, re-runs checks]
+    M --> V[Reviewer<br/>no edit tools, re-runs checks]
     W --> V
     V -- "Standards + Spec findings" --> H((Owner<br/>merges))
     H -. "before release" .-> A[Security auditor]
@@ -150,6 +150,8 @@ sudo tar -xzf gitleaks.tgz -C /usr/local/bin gitleaks
 pipx install semgrep==1.184.0
 ```
 
+semgrep is pinned by version only (PyPI publishes no checksum the workflow checks); gitleaks is pinned by version and sha256.
+
 ### Install into a repository
 
 ```bash
@@ -208,11 +210,11 @@ scripts/set-models.sh standard   # or: lite | max, optionally with --cross
 |---|---|---|---|---|---|
 | **lite** | Sonnet / high | Sonnet / high | Sonnet / high | Opus / high | Pro ($20) plans. About half the cost per solved task of standard's writer ($0.11 vs $0.22), at a lower first-try solve rate (87.6% vs 92.8%); the ladder catches failures. |
 | **standard** *(default)* | Opus / high | Opus / medium | Opus / high | Opus / xhigh | Any plan with Opus access. Planner quality earns the writer a `medium` effort; the reviewer never runs below `medium`. |
-| **max** | Fable / high | Opus / medium | Opus / high | Fable / high | Plans or budgets that include Fable, used only in the two rare, low-volume roles. |
+| **max** | Fable / high | Opus / medium | Opus / high | Fable / high | *Experimental.* Plans or budgets that include Fable, used only in the two rare, low-volume roles. No comparative Fable-vs-Opus data exists for planning or auditing, so this is a hypothesis to test, not a measured gain. |
 
-`--cross` adds the optional [Codex reviewer](#cross-model-review-codex) (off by default). Review effort scales with risk and the writer escalates when stuck; both are defined in `CLAUDE.md` (Workflow). Never set Sonnet below `high`: at `medium` it dropped about 15 points on Anthropic's internal coding benchmark.
+`--cross` adds the optional [Codex reviewer](#cross-model-review-codex) (off by default). Review effort scales with risk and the writer escalates when stuck; both are defined in `CLAUDE.md` (Workflow). Never set Sonnet below `high`: at `medium` it dropped about 7 points on SWE-bench Pro and about 15 on Anthropic's internal agentic-coding benchmark (both Anthropic's own measurements).
 
-Agents use model aliases (`sonnet`, `opus`, `fable`), so they move to new versions automatically.
+Agents use model aliases (`sonnet`, `opus`, `fable`), so they move to new versions automatically. Aliases differ by provider: on Amazon Bedrock, Google Vertex or Microsoft Foundry an alias can point to an older model, and an effort level the model lacks falls back silently. `check.sh doctor` warns when one of those providers is selected.
 
 > [!NOTE]
 > On Pro and standard Team plans, Fable bills **usage credits** from the first request. Interactive sessions ask before they do; `claude -p` and Agent SDK runs **do not**, and background or Remote sessions drop the turn after 5 minutes waiting for consent. Set a cap in `/usage-credits` before running **max** in automation.
@@ -222,8 +224,8 @@ Agents use model aliases (`sonnet`, `opus`, `fable`), so they move to new versio
 Off by default. `scripts/set-models.sh <profile> --cross` moves `codex-reviewer` from `.claude/optional/` into `.claude/agents/`.
 
 - **When it runs.** After the reviewer on High-risk diffs, and once before a release. It is a **second opinion to triage, never a gate**: where it agrees with the Claude reviewer, confidence goes up; what only it raised gets your attention.
-- **How.** The agent only relays `scripts/codex-review.sh`: `gpt-6.1-sol` at effort `high` for High-risk diffs, `gpt-6-astra` at `high` for a release (one retry on `gpt-6.1-sol` at `xhigh` if Astra fails). Never `ultra`, which fans out to subagents. A ChatGPT Plus subscription gives it a quota separate from your Claude plan.
-- **Egress.** Codex works in a fresh copy of HEAD (checked out through a temporary index) plus your uncommitted changes, with no `.git`: git-ignored files and history are kept out of the directory Codex works in; Codex's read-only sandbox limits writes, not reads, so treat anything your user account can read as reachable. If gitleaks is installed, that copy and the final prompt (which holds the diff, removed lines included) are scanned first, with the `.gitleaks.toml` and `.gitleaksignore` from the base (never from the change under review); new inline `gitleaks:allow` markers in the change are ignored; and a finding **refuses the run**. The tracked code and the diff leave for OpenAI; on client work, get the client's OK first.
+- **How.** The agent only relays `scripts/codex-review.sh`: `gpt-6.1-sol` at effort `high` for High-risk diffs, `gpt-6-astra` at `high` for a release (one retry on `gpt-6.1-sol` at `xhigh` if Astra fails). Astra for release is *experimental*: it rests on one secondhand, non-coding benchmark and scored below Sol on the coding one; no code-review benchmark exists for either. Never `ultra`, which fans out to subagents. A ChatGPT Plus subscription gives it a quota separate from your Claude plan.
+- **Egress.** Codex works in a fresh copy of HEAD (checked out through a temporary index) plus your uncommitted changes, with no `.git`: git-ignored files and history are kept out of the directory Codex works in; Codex's read-only sandbox limits writes, not reads, so treat anything your user account can read as reachable. gitleaks is required (without it nothing is sent): that copy and the final prompt (which holds the diff, removed lines included) are scanned first for known-pattern secrets, with the `.gitleaks.toml` and `.gitleaksignore` from the base (never from the change under review); new inline `gitleaks:allow` markers in the change are ignored; and a finding **refuses the run**. The scan is pattern-based: an unprefixed password can pass. A tracked `.env`, `*.pem`, `*.p12` or SSH key also refuses the run; symlinks and a `.codex/` directory are removed, and an `AGENTS.md` is named in the report. The reviewer checklist sent to Codex comes from the base, and the run refuses when the change edits `scripts/codex-review.sh` or `codex-reviewer.md` (review that change first); a base branch is taken from `origin/<base>` when that exists, any other ref (`HEAD~1`, a tag) as given. Limitation: a base `.gitleaks.toml` with a relative `[extend] path` cannot be resolved, and the run is refused as if secrets were found. The tracked code and the diff leave for OpenAI; on client work, get the client's OK first.
 - **Not on Review-only**: the script reviews its own repo, not someone else's PR.
 
 ## Daily use
@@ -295,7 +297,7 @@ quotes: 3 verified, 0 unverified, 0 unquoted
 coverage: 3 changed files, 0 not in ### Coverage
 ```
 
-The checks line is the point: the reviewer re-ran the checks and compared them with the writer's claim. A mismatch there is a blocking finding in itself. The `### Verification` block is not written by the reviewer: when the report is saved, `scripts/verify-review.sh` looks up each quoted line in the file it cites and checks that every changed file was read. A quote it cannot find means the finding may describe code that is not there, so you read that one first.
+The checks line is the point: the reviewer re-ran the checks and compared them with the writer's claim. A mismatch there is a blocking finding in itself. The `### Verification` block is not written by the reviewer: when the report is saved, `scripts/verify-review.sh` looks up each quoted line in the file it cites and checks that every changed file is named on the `read:` line of `### Coverage`. It checks form, not judgment: a quote that exists, a path that was listed. A quote it cannot find means the finding may describe code that is not there, so you read that one first.
 
 </details>
 
@@ -366,10 +368,10 @@ All five are plain Markdown files with YAML frontmatter (four in `.claude/agents
 
 | Agent | Access | Loads `CLAUDE.md` | Job |
 |---|---|---|---|
-| **planner** | Read-only | No | One decisive blueprint: approach, rejected alternative, risk tier, acceptance criteria, files, data, rollback path, tests, sequence, questions for the owner. |
+| **planner** | No edit tools; Bash by instruction | No | One decisive blueprint: approach, rejected alternative, risk tier, acceptance criteria, files, data, rollback path, tests, sequence, questions for the owner. |
 | **writer** | Read/write | Yes | Implements the blueprint, writes tests that catch real bugs, runs the checks, reports exact output and the defaults it picked. Stops with a `## STUCK:` report instead of looping. |
-| **reviewer** | Read-only | No | Reads the diff before the plan, re-runs the checks, reports Standards and Spec findings separately with confidence scores. Lower threshold (60%) for data, security and concurrency; 85% elsewhere. |
-| **security-auditor** | Read-only | No | Whole-system audit (trust boundaries, authorization, tenancy, data flows, secrets, rate limiting, logging). Critical and High block a release when they carry a reproduction. |
+| **reviewer** | No edit tools; Bash by instruction | No | Reads the diff before the plan, re-runs the checks, reports Standards and Spec findings separately with confidence scores. Lower threshold (60%) for data, security and concurrency; 85% elsewhere. |
+| **security-auditor** | No edit tools; Bash by instruction | No | Whole-system audit (trust boundaries, authorization, tenancy, data flows, secrets, rate limiting, logging). Critical and High block a release when they carry a reproduction. |
 | **codex-reviewer** *(optional)* | Runs one script (read-only Codex sandbox) | No | Relays `scripts/codex-review.sh`: a Codex second opinion on High-risk diffs and releases. |
 
 Every agent treats text it finds in the repo (comments, docs, PR descriptions, other agents' reports) as **data, never instructions**. An instruction found there is reported as possible prompt injection.
@@ -380,11 +382,11 @@ Configured in `.claude/settings.json`:
 
 | Mechanism | Effect |
 |---|---|
-| `permissions.deny` | Blocks `git push`, `reset --hard`, `clean`, `branch -D`, `checkout -- .`, `restore .`, `stash drop`, `npm publish`, and reading `.env` and `*.pem` files |
+| `permissions.deny` | Blocks `git push`, `reset --hard`, `clean`, `branch -D`, `branch -f`, `update-ref`, `checkout -- .`, `restore .`, `stash drop`, `stash clear`, `gh pr create`, `gh pr merge`, `gh repo delete`, `gh repo edit`, `gh repo archive`, `gh repo create`, `gh repo sync`, `npm publish`, and reading `.env` and `*.pem` files. Prefix rules: they prevent accidents, not attacks. |
 | `PostToolUse` on edits | Runs `check.sh lint --changed`; on failure, shows the output to Claude so it fixes the problem before moving on. Stays quiet until lint is configured. |
 | `SubagentStop` (reviewer, security-auditor, codex-reviewer, writer) / `SubagentHandback` | Saves reviewer, auditor and Codex reports to `docs/reviews/`, and a writer's `## STUCK:` report (other writer reports are ignored). Reviewer and Codex reports then get a `### Verification` block from `scripts/verify-review.sh` (are the quoted lines really in the files, was every changed file read, are all sections there); when something is off, a one-line summary appears in the session. |
-| `Stop` | Runs `scripts/check-stamp.sh hook` when Claude finishes a turn. If files changed since the last passing `check.sh all`, it shows which ones, so "checks passed" never quietly refers to older code. Silent when nothing changed, and until `check.sh` is configured. |
-| codex-reviewer frontmatter `PreToolUse` | Allows Bash only for `scripts/codex-review.sh high\|release [ref]` |
+| `Stop` | Runs `scripts/check-stamp.sh hook` when Claude finishes a turn. If files changed since the last passing `check.sh all`, it shows how many and up to three names. Silent when nothing changed, until `check.sh` is configured, and after a commit (even of changes the checks never passed on). |
+| codex-reviewer frontmatter `PreToolUse` | Allows Bash only for `scripts/codex-review.sh high\|release [ref]`; the script itself refuses when the change edits the review tooling. Tested by script, not yet observed firing in a live session. |
 | `CLAUDE_CODE_FORK_SUBAGENT=0` | Agents run in sequence, and Claude waits for each report |
 
 ## The improvement loop
@@ -410,7 +412,7 @@ flowchart LR
    - A finding seen **3+ times** becomes a lint rule, and its conventions row becomes *mechanical*.
    - A dismissal seen **2+ times** becomes an entry in the reviewer's false-positives list.
 
-Thresholds are written down in advance so the loop can't drift, and you approve every rule change.
+Thresholds are written down in advance so the loop can't drift, and you approve every rule change. The numbers themselves (3+, 2+, and the 60%/85% confidence, 40% agreement and 95% honesty thresholds) are starting points to tune, not evidence.
 
 ## Measuring whether it works
 
@@ -431,11 +433,11 @@ It also sets **kill criteria**. If cost per change is above baseline after 60 da
 | Comparison | Result |
 |---|---|
 | Opus 5.5 `medium` vs Fable 5.1 `high` | 92.8% solved at $0.22 per solved task† vs 92.3% at $1.19† |
-| Writer ladder (`medium`, failures re-run at `high`) vs fixed `high` | 96.0–97.1% at ~$0.24† vs 94.8–95.8% at $0.29† |
+| Anthropic's 2-rung, effort-only retry graded by hidden tests (`medium`, failures re-run at `high`) vs fixed `high` | 96.0–97.1% at ~$0.24 per task† vs 94.8–95.8% at $0.29 per task† |
 | **lite** vs **standard** writer: Sonnet 5.5 `high` vs Opus 5.5 `medium` | 87.6% at $0.11 per solved task† vs 92.8% at $0.22† |
-| Codex review of 100K input and 5K output tokens | `gpt-6.1-sol` ≈ $0.25‡; `gpt-6-astra` ≈ $1.25‡ |
+| Codex review of 100K input and 5K output tokens (a floor: reasoning tokens bill as output, and a real review uses several times 5K) | `gpt-6.1-sol` ≈ $0.25‡; `gpt-6-astra` ≈ $1.25‡ |
 
-How a subscription weights each model against its quota is unpublished, so measure with `/usage` in the first month (`docs/rollout.md`).
+Rows 1 and 3 are per solved task, row 2 per task. In row 2 the gain comes from re-running failures (re-running at `high` after `high` also beats fixed `high`); starting at `medium` is the smaller, cost-only saving. The kit's own 3-rung ladder, triggered by self-written tests and reviewer findings, is untested. How a subscription weights each model against its quota is unpublished, so measure with `/usage` in the first month (`docs/rollout.md`).
 
 ## When things go wrong
 
@@ -488,13 +490,13 @@ The agent files and hooks use Claude Code's formats, but a second opinion from a
 <details>
 <summary><strong>Isn't five agents expensive?</strong></summary>
 
-Small changes use two contexts (main session + reviewer). Read-only agents skip `CLAUDE.md` and read only what they need. The planner and writer only run for changes touching three or more files. The fifth agent, the Codex reviewer, is off by default and runs only on High-risk diffs and before releases. And the cost metric above exists so you can check rather than guess.
+Small changes use two contexts (main session + reviewer). Agents without edit tools skip `CLAUDE.md` and read only what they need. The planner and writer only run for changes touching three or more files. The fifth agent, the Codex reviewer, is off by default and runs only on High-risk diffs and before releases. And the cost metric above exists so you can check rather than guess.
 </details>
 
 <details>
 <summary><strong>Why does the reviewer run at higher effort than the writer?</strong></summary>
 
-Review is bounded: it reads one diff and emits findings once, while the writer iterates. Its effort is never `low` (Opus at `low` scored 34 points below `medium` at finding bugs) and rises to `xhigh` on High-risk changes. It also reviews in a fresh context, so the model that wrote the code is not grading it. `docs/rollout.md` lists the first-month measures that tell you whether the settings pay off on your own diffs.
+Review is bounded: it reads one diff and emits findings once, while the writer iterates. Its effort is never `low` (Opus at `low` scored 34 points below `medium` at finding bugs) and rises to `xhigh` on High-risk changes, which is a hypothesis: no review-effort ablation exists for Claude. It also reviews in a fresh context, so the model that wrote the code is not grading it. `docs/rollout.md` lists the first-month measures that tell you whether the settings pay off on your own diffs.
 </details>
 
 <details>

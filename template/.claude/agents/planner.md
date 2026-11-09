@@ -1,6 +1,6 @@
 ---
 name: planner
-description: "Turns a feature request or change into one decisive implementation blueprint that fits this repo's conventions. Read-only. Use for changes touching 3+ files, a migration, or anything the owner wants planned; the blueprint goes to the writer."
+description: "Turns a feature request or change into one decisive implementation blueprint that fits this repo's conventions. No edit tools; Bash limited by instruction. Use for changes touching 3+ files, a migration, or anything the owner wants planned; the blueprint goes to the writer."
 model: opus
 effort: high
 color: green
