@@ -14,6 +14,8 @@ Each item gives the problem, the evidence, the change, and a CHANGELOG/Upgrade l
 
 ## 0. SECURITY BUG: `verify-review.sh` reads outside the repository (found by Codex on Cronxi #586; fixed there)
 
+**Status:** fixed in the kit by PR #6 (`fix/verify-review-containment`). There, origin-first follows `scripts/codex-review.sh`; the kit's `check.sh` is local-first. `BASE_BRANCH=refs/heads/<name>` overrides it.
+
 **Problem.** `resolve()` checks that the *cited* path stays inside the repository. When that path is not a file, it falls back to a suffix match against the changed files, and returns that candidate unchecked. Repro:
 1. A changed file `src/escape` is a symlink to a file outside the repo.
 2. A review cites `escape:1` and quotes a line of the outside file.
