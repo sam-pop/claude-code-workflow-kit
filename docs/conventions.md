@@ -1,69 +1,74 @@
 # Conventions
 
-Status: {{DRAFT | ADOPTED}}. This is the one file the planner, writer and reviewer cite. Every rule here is either **mechanical** (checked by `scripts/check.sh lint`, named in the Enforcement column) or **judgment** (checked by the reviewer). A rule with neither is a wish, not a convention; remove it or give it an enforcer.
+Status: ADOPTED. This is the one file the planner, writer and reviewer cite. Every rule here is either **mechanical** (checked by `scripts/check.sh`, named in the Enforcement column) or **judgment** (checked by the reviewer).
 
 ## Architecture
 
-{{Describe the layers and the one allowed direction of dependencies. Example:}}
+- `template/` is the product: exactly what `scripts/install.sh` installs into a target, at the same paths. Edit there first.
+- The root is an install of `template/` tailored to this repo (dogfood copies), plus maintainer-only files: `scripts/install.sh`, `scripts/kit-upgrade-prompt.md`, `scripts/tools.sh`, `tests/`, `docs/research/`, `README.md`, `CHANGELOG.md`. After a `template/` edit, run `scripts/install.sh --upgrade .` and merge any `.kit` file into the root copy.
+- Hooks in `.claude/settings.json` call scripts in `scripts/`; the logic lives in the script, never inline in the JSON.
+- A script finds the repo by its own location (`cd "$(dirname "$0")/.."`) or by `CLAUDE_PROJECT_DIR` for hooks, never by the caller's working directory.
+- `scripts/install.sh` never writes inside the kit: it works from a read-only copy or one without `.git`.
 
-- `{{ui/}}` → `{{domain/}}` ← `{{data/}}`. `{{domain/}}` imports nothing from the other two.
-- {{External services (database, auth, payments, email) are reached only through `{{data/}}` behind an interface the domain defines.}}
-- {{Entry points (routes, handlers, jobs, CLI) hold no business logic; they validate input, call the domain, shape the response.}}
+## Configuration
 
-## Dependency injection and configuration
-
-- {{How dependencies are provided: constructor, context, module-level factory. One pattern.}}
-- Config and secrets are read in one place ({{file}}) and passed down. No `process.env` / `os.environ` / equivalent outside it.
+- Scripts read environment variables only where their header documents them (`BASE_BRANCH`, `DOCTOR_SKIP_PATHS`, `CLAUDE_PROJECT_DIR`). No secrets anywhere in the kit.
 
 ## Errors
 
-- {{One error type or shape crosses layer boundaries (`AppError`, `Result`, exceptions mapped at the edge). Name it.}}
-- Errors from vendors and the platform are mapped at the boundary where they occur.
-- No silently swallowed errors on a user-triggered path.
+- Each script's header states its usage and exit codes; `scripts/check.sh` exits 2 for NOT CONFIGURED, 1 for a failing check.
+- Hook scripts that only observe (`capture-review.sh`) always exit 0 and stay silent on their own errors: a hook bug never blocks the user's work. `lint-hook.sh` exits 2 only to hand a lint failure to Claude.
+- A failing command whose output a script uses is checked (`|| { echo "...: git diff failed" >&2; exit 1; }`); a script never continues on a partial result.
 
 ## Data
 
-- {{Schema source of truth and how migrations are made and applied.}}
-- {{Reads vs writes: caching, local-first, transactions, whatever applies.}}
-- {{Multi-tenancy or row-level rules, if any.}}
-
-## Concurrency and async
-
-- {{The one async model used. What is banned.}}
+- `.claude/kit-version` (`version=… commit=… installed=…`), `.claude/kit-manifest` (`<sha256>  <path>` per installed file) and the set of paths under `template/` are compatibility contracts with every repo installed since 1.4. A path removed from `template/` shows as `retired` in those repos; a renamed one needs an `ALIAS` in `install.sh`.
+- Tracked files hold no maintainer working state: `handoff.md` and saved reports (`docs/reviews/*-*.md`) are git-ignored at the root.
 
 ## Naming and files
 
 | Thing | Pattern | Example |
 |---|---|---|
-| {{Files}} | {{kebab-case / PascalCase}} | {{example}} |
-| {{Tests}} | {{mirror source path, `.test` suffix}} | {{example}} |
-| {{Booleans}} | {{is/has/can prefix}} | {{example}} |
+| Scripts | kebab-case `.sh`, executable (mode 100755) | `scripts/capture-review.sh` |
+| Tests | `tests/<script-or-area>.bats` | `tests/install.bats` |
+| Test names | the behaviour and, for a regression, the bug | `@test "upgrade: tailored file with unchanged kit copy gets no .kit"` |
+| Stubs | `tests/stubs/<command>` | `tests/stubs/codex` |
 
 ## Testing
 
-Write a test where it catches a real bug: a mapper, a rule with branches, a write path, a failure the user would see. Skip tests that restate the implementation, check defaults, or exercise fakes. Tests use fakes injected through the normal DI path; no shared mutable state, no real network, no real clock.
+Write a test where it catches a real bug: an install or upgrade class, an exit-code path, a hook that must stay silent, a portability trap. Every bug fix ships a bats test that fails without the fix.
 
-Test runner: {{name}}. Pattern: {{arrange / act / assert, or the project's own}}.
+Test runner: bats (`bats -r tests`), with bats-support and bats-assert from `node_modules`. Pattern: `setup` builds what the test needs in `$BATS_TEST_TMPDIR`; `tests/helpers.bash` gives a committed kit snapshot (`mk_kit`), a target repo (`mk_target`), command stubs (`use_stub`), a PATH without a command (`path_without`) and runtime-generated fake secrets (`fake_token`).
+
+- Each test runs with its own `HOME` and `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM=1`, and no network.
+- External tools (codex, gitleaks, timeout, claude) are stubs on PATH unless a test needs the real one (`require_real`); CI on Linux sets `KIT_REQUIRE_REAL_TOOLS=1` so those tests fail instead of skipping.
+- No literal secret is ever committed, in tests or anywhere else; fake tokens are generated when the test runs.
 
 ## Logging and privacy
 
-- Use the injected logger; no bare `print` / `console.log` in production code.
-- Never log {{personal data: names, emails, tokens, addresses, document contents}}.
-- Secrets never in source, tracked config or logs.
+- Scripts print paths, counts and exit codes; never file contents that might hold secrets (gitleaks runs with `--redact`).
+- `template/` holds nothing about this repo or its maintainer: no names, emails, pre-release plans or root-only paths.
 
 ## Anti-patterns
 
-Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh lint`; **judgment** rows are the reviewer's.
+Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh`; **judgment** rows are the reviewer's.
 
 | Anti-pattern | Enforcement |
 |---|---|
-| {{Vendor SDK imported outside `data/`}} | mechanical: {{lint rule name}} |
-| {{Business logic in a route handler}} | judgment |
-| {{`console.log` / `print` in production code}} | mechanical: {{lint rule}} |
-| {{Hard-coded config or secret}} | mechanical: {{secret scan}} |
-| {{Unhandled promise / swallowed error}} | mechanical: {{lint rule}} |
-| {{Inline styles / magic numbers in UI}} | judgment |
-| {{Test that asserts nothing or only initial state}} | judgment |
+| Shell bug patterns (unquoted expansions, unchecked `cd`, `A && B \|\| C`) | mechanical: `lint` shellcheck |
+| Shell formatting that differs from `.editorconfig` | mechanical: `lint` shfmt |
+| Markdown structure errors | mechanical: `lint` markdownlint-cli2 |
+| Broken relative link or heading anchor in Markdown | mechanical: `lint` lychee `--offline --include-fragments` |
+| Workflow syntax or expression errors | mechanical: `lint` actionlint |
+| A secret in the tree | mechanical: `security` gitleaks |
+| bash-4 syntax (`mapfile`, `declare -A`, `local -n`, `${x,,}`, `[[ -v`, `\|&`, `coproc`) | mechanical: `test` (`tests/consistency.bats`) |
+| Root copy drifting from `template/` | mechanical: `test` (`tests/consistency.bats`) |
+| Maintainer content inside `template/` | mechanical: `test` (`tests/consistency.bats`) |
+| Bug fix without a regression test | judgment |
+| A hook that can block or print noise on its own failure | judgment |
+| A new runtime dependency in `template/` (anything beyond bash, git, python3 stdlib) | judgment |
+| An edit to a root dogfood copy that was not made in `template/` first | judgment |
+| A behaviour change without README, `template/HOW-TO-USE.md` and CHANGELOG Upgrade notes | judgment |
 | Resolving an item in `docs/open.md` without the owner | judgment |
 | Unrelated refactors mixed into a change | judgment |
 

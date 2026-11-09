@@ -19,14 +19,14 @@ Build a picture of the repo before touching any kit file. Use the Explore agent 
 Ask only what discovery could not answer, in rounds: every question whose prerequisites are settled goes in the same round, numbered, each with a recommended answer worded so that "yes" accepts it. If the `grilling` skill from mattpocock/skills is installed, use it; its format is the one meant here. Typical questions:
 
 1. Tier (see `docs/rollout.md`): script, solo, shared, or review-only (other people write the code)? This decides which agents exist and whether `handoff.md` is committed. If discovery shows most commits are by people other than the owner, propose review-only.
-2. Model profile (`docs/rollout.md`, Model profiles): **standard** (Sonnet writer, Opus elsewhere; the default) or **max** (Opus writer, Fable reviewer and auditor), depending on what the owner's plan covers. Apply it with `scripts/set-models.sh <profile>` and record it in `docs/decisions.md`.
+2. Model profile (`docs/rollout.md`, Model profiles): **lite** (Sonnet/high planner, writer and reviewer, Opus/high auditor; Pro $20 plans), **standard** (Opus; planner high, writer medium, reviewer high, auditor xhigh; the default) or **max** (Fable/high planner and auditor; Opus writer medium, reviewer high), depending on what the owner's plan covers; and cross-model review: off (recommended) or `--cross`, which sends High-risk diffs and release ranges to OpenAI. Cross-model review is not available on Review-only: the script reviews its own repo, not someone else's PR. Apply it with `scripts/set-models.sh <profile> [--cross]` and record it in `docs/decisions.md`.
 3. Any rules you know you want enforced that the repo does not yet show.
 4. Is there a product owner whose decisions must be recorded separately from engineering decisions?
 5. Anything in the repo that is intentionally non-standard and should not be "fixed".
 
 If the owner is not available, take the most reasonable reading, say which reading you took at the top of your report, and proceed.
 
-**If the tier is Review-only, stop here and switch plans.** Do not install hooks, `.claude/settings.json` or `scripts/` into a repo other people commit to (`docs/rollout.md`, Review-only). Instead set up a separate review workspace: copy `.claude/agents/reviewer.md`, `.claude/agents/security-auditor.md` and `docs/conventions.md` into it, tailor those three to the client repo's stack, and write a short `CLAUDE.md` there saying where the client repo is checked out and that reviews use `gh pr diff <n>`. Then go to step 6.
+**If the tier is Review-only, stop here and switch plans.** Do not install hooks, `.claude/settings.json` or `scripts/` into a repo other people commit to (`docs/rollout.md`, Review-only). Instead set up a separate review workspace: copy `.claude/agents/reviewer.md`, `.claude/agents/security-auditor.md` and `docs/conventions.md` into it, then tailor those three to the client repo's stack, and write a short `CLAUDE.md` there saying where the client repo is checked out and that reviews use `gh pr diff <n>`. Then go to step 6.
 
 ## 3. Fill in
 
@@ -35,15 +35,16 @@ First, merge any `*.kit` files the installer left beside existing files (for exa
 Replace every `{{PLACEHOLDER}}` and delete every `<!-- kit: … -->` comment once its instruction is done. Search for `{{` at the end to confirm none remain.
 
 - `CLAUDE.md`: stack, layout table, the exact `check.sh` sub-commands, pointers. Keep it under 150 lines. Move anything that reads like history out.
-- `scripts/check.sh`: replace every `not_configured` call with the repo's real commands, including a `lint --changed` that lints only the given files. Every function must exit non-zero on failure. A check that truly does not apply becomes `skip "<reason>"`. Until a check is configured it fails on purpose.
+- `scripts/check.sh`: replace every `not_configured` call with the repo's real commands, including a `lint --changed` that lints only the given files. Every function must exit non-zero on failure. A check that truly does not apply becomes `skip "<reason>"`. Until a check is configured it fails on purpose. Keep the two `check-stamp` lines in `run_all`: they let the Stop hook tell when checks last passed.
 - `docs/conventions.md`: write the sections from what discovery found. Each rule in the Anti-Patterns table must have a mechanical check in `check.sh` or be marked **judgment** (reviewer only). Use the stack's existing lint rules where one already covers a row. Writing new custom rules is a follow-up task, not part of tailoring: list the rows that still need one under **Follow-ups** in your report.
 - `docs/decisions.md`: record the decisions already visible in the repo (stack, major libraries, deploy target), dated with the best date you can find (commit history), not today's date.
 - `docs/open.md`: everything discovery left unresolved, plus anything the owner said is undecided.
 - `.claude/agents/*.md`: keep the structure; replace the stack-specific examples in the reviewer's "Subtle violations" and "False positives" lists with ones that fit this stack. Remove layers from the writer's workflow that this repo does not have. In `security-auditor.md`, name the sensitive data classes this repo holds and fill the stack-specific area; delete the file on Script and Solo tiers.
 - `scripts/check.sh security`: pick the dependency-audit command for the stack and the semgrep ruleset; confirm gitleaks and semgrep are installed or add them to the setup instructions in `CLAUDE.md`.
-- `.claude/settings.json`: keep the hooks as they are; they call `scripts/lint-hook.sh` and `scripts/capture-review.sh`. If `check.sh lint --changed` takes over ~10 s, make it faster (lint only the changed files) rather than removing the hook. Add `permissions.deny` rules for anything else in this repo that must never run unattended (a deploy script, a production database CLI).
-- `.github/workflows/check.yml`: install gitleaks and semgrep (already there) and the stack's runtime.
-- Delete `.github/workflows/check.yml` if the repo is not on GitHub.
+- `.claude/settings.json`: keep the hooks as they are; they call `scripts/lint-hook.sh` (after edits), `scripts/capture-review.sh` (saves agent reports) and, on Stop, `scripts/check-stamp.sh hook` (warns when files changed since `check.sh all` last passed). If `check.sh lint --changed` takes over ~10 s, make it faster (lint only the changed files) rather than removing the hook. Add `permissions.deny` rules for anything else in this repo that must never run unattended (a deploy script, a production database CLI).
+- `.github/workflows/check.yml`: install gitleaks and semgrep (already there) and the stack's runtime. Keep `permissions: contents: read`, `persist-credentials: false` and the gitleaks checksum step; pin every action you add to a full commit SHA with the tag in a comment (`uses: owner/action@<40-hex sha> # vX.Y.Z`). semgrep is pinned by version only (`pipx install semgrep==…`), not by checksum; say so in the report if the owner wants every CI tool checksum-verified.
+- `.github/dependabot.yml`: keeps the pinned actions current; add the stack's package ecosystem. Delete it if the repo uses another updater (Renovate).
+- Delete `.github/workflows/check.yml` and `.github/dependabot.yml` if the repo is not on GitHub.
 - `handoff.md`: write the first one: what you did, what remains, questions for the owner. Add it to `.gitignore` only if the owner chose solo tier.
 
 ## 3b. Write for the agent that will read it
@@ -58,7 +59,8 @@ Every file in `.claude/agents/` and `CLAUDE.md` is read by a model, not a person
 
 ## 4. Remove
 
-- Delete `TAILOR.md`, `HOW-TO-USE.md` and this kit's `README.md` from the repo. If the repo has no README, write a short one that mentions `CLAUDE.md` and `scripts/check.sh`.
+- Delete `TAILOR.md` and `HOW-TO-USE.md` from the repo (the kit's `README.md` is not installed). If the repo has no README, write a short one that mentions `CLAUDE.md` and `scripts/check.sh`.
+- In `.github/workflows/check.yml`, delete the "Kit not tailored yet" step and every `if: hashFiles('TAILOR.md') …` line. Left in place, a pull request that adds a file named `TAILOR.md` would skip every check; `doctor` warns while they remain.
 - Delete agent files the tier does not use.
 
 ## 5. Verify

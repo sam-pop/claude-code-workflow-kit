@@ -1,0 +1,12 @@
+# Keeps the SHA-pinned actions and the npm dev tools (package-lock.json) current.
+# The binaries pinned in scripts/tools.sh are bumped by hand: re-check both checksum sources.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly

@@ -1,0 +1,22 @@
+{
+  // Markdown lint for the kit repo. Only rules the repo breaks on purpose are off.
+  "config": {
+    "default": true,
+    // Prose is written one paragraph per line; wrapping would make every diff noisy.
+    "MD013": false,
+    // README's header is HTML (centred logo), and prompts use <placeholder> words in prose.
+    "MD033": false,
+    // README starts with that HTML header, not a Markdown heading.
+    "MD041": false,
+    // Tables use the compact |---| style throughout.
+    "MD060": false,
+    // CHANGELOG repeats "### Added" etc. under each version.
+    "MD024": { "siblings_only": true }
+  },
+  "ignores": [
+    "node_modules/**",
+    ".tools/**",
+    "docs/research/**",
+    "docs/reviews/*-*.md"
+  ]
+}

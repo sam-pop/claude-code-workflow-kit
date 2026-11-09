@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Stub of gitleaks for tests: `gitleaks dir <path> [--config <file>] ...`. Logs argv, the --config
+# file and the scanned directory's .gitleaksignore to $STUB_LOG/gitleaks.log. Exits 1 when a file
+# under <path> has a line holding FAKE-SECRET- without gitleaks:allow, else 0.
+log="${STUB_LOG:-/tmp}/gitleaks.log"
+src=""
+cfg=""
+prev=""
+for a in "$@"; do
+  [[ "$prev" == dir ]] && src=$a
+  [[ "$prev" == --config ]] && cfg=$a
+  prev=$a
+done
+{
+  echo "argv: $*"
+  echo "cwd: $PWD"
+  echo "env GITLEAKS_CONFIG: ${GITLEAKS_CONFIG:-unset}"
+  [[ -n "$cfg" ]] && echo "config: $(tr '\n' ' ' <"$cfg")"
+  [[ -f "$src/.gitleaksignore" ]] && echo "ignore: $(tr '\n' ' ' <"$src/.gitleaksignore")"
+  [[ -f "$src/.gitleaks.toml" ]] && echo "srcconfig: present"
+} >>"$log"
+[[ -n "$src" ]] || exit 0
+if grep -r 'FAKE-SECRET-' "$src" 2>/dev/null | grep -qv 'gitleaks:allow'; then
+  echo "stub gitleaks: leak found" >&2
+  exit 1
+fi
+exit 0

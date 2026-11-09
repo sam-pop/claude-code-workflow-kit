@@ -1,0 +1,52 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only token; nothing in this workflow writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+      SEMGREP_VERSION: 1.184.0
+    steps:
+      # Actions are pinned to a full commit SHA (the tag in the comment); Dependabot keeps them current.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Untailored kit (TAILOR.md still present): checks are unconfigured by design, so skip them.
+      # Tailoring deletes this step and every hashFiles('TAILOR.md') line (TAILOR.md step 4; doctor checks).
+      - name: Kit not tailored yet
+        if: hashFiles('TAILOR.md') != ''
+        run: echo "::notice::TAILOR.md is present, so this is the untailored kit. Checks run once TAILOR.md has been followed and deleted."
+      # kit: the stack's runtime and install, e.g.
+      #   - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      #     if: hashFiles('TAILOR.md') == ''
+      #     with: { node-version-file: .nvmrc, cache: npm }
+      #   - run: npm ci
+      #     if: hashFiles('TAILOR.md') == ''
+      - name: Install gitleaks (checksum verified)
+        if: hashFiles('TAILOR.md') == ''
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          sudo tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C /usr/local/bin gitleaks
+      - name: Install semgrep
+        if: hashFiles('TAILOR.md') == ''
+        run: pipx install "semgrep==${SEMGREP_VERSION}"
+      - name: check.sh all
+        if: hashFiles('TAILOR.md') == ''
+        run: scripts/check.sh all

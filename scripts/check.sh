@@ -2,97 +2,179 @@
 # One entry point for every verification. Agents, hooks and CI call this; nothing calls raw tools.
 # Usage: scripts/check.sh <lint|test|build|security|doctor|all> [--changed]
 #   --changed  limit lint to files changed vs the base branch, including untracked files (hook fast path)
+# Exit codes: 0 pass, 1 a check failed or a tool is missing, 2 usage.
+# Environment: BASE_BRANCH (default: origin/HEAD, else main; origin/<base> when there is no local
+# branch); KIT_EXPECT_BASH (CI: when set, `test` prints the bash version found on PATH first).
 #
-# kit: replace each NOT CONFIGURED line with this repo's real commands. An unconfigured check FAILS
-# (exit 2) on purpose, so nobody can report "lint passed" for a check that never ran. If a check
-# truly does not apply, replace its body with: skip "<reason>"
+# The kit's own copy (tailored from template/scripts/check.sh). A missing tool is a FAIL with the
+# command that installs it, never a silent skip.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 2
 
 BASE_BRANCH="${BASE_BRANCH:-$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
-CHANGED=0; [[ "${2:-}" == "--changed" ]] && CHANGED=1
+CHANGED=0
+[[ "${2:-}" == "--changed" ]] && CHANGED=1
 
-not_configured() { echo "NOT CONFIGURED: $1 (edit scripts/check.sh)" >&2; return 2; }
-skip() { echo "skipped: $1"; return 0; }
+skip() {
+  echo "skipped: $1"
+  return 0
+}
+
+# Maintainer tools: scripts/tools.sh install puts pinned binaries in .tools/bin (first on PATH);
+# npm ci installs bats and markdownlint-cli2, called by path so no package's bin shadows a system tool.
+[[ -d "$PWD/.tools/bin" ]] && PATH="$PWD/.tools/bin:$PATH"
+export PATH
+BATS="$PWD/node_modules/.bin/bats"
+MDLINT="$PWD/node_modules/.bin/markdownlint-cli2"
+need() { # tool hint
+  [[ "$1" == */* ]] && [[ -x "$1" ]] && return 0
+  [[ "$1" != */* ]] && command -v "$1" >/dev/null && return 0
+  echo "FAIL: ${1##*/} not installed ($2)" >&2
+  return 1
+}
+NPM_HINT="run: npm ci"
+TOOLS_HINT="run: scripts/tools.sh install"
+
+base_ref() { # the local base branch, else origin/<base>
+  local r
+  for r in "$BASE_BRANCH" "origin/$BASE_BRANCH"; do
+    git rev-parse --verify --quiet "$r^{commit}" >/dev/null 2>&1 && echo "$r" && return 0
+  done
+  return 1
+}
 
 changed_files() {
-  { git diff --name-only --diff-filter=ACMR "$BASE_BRANCH"... 2>/dev/null
+  local base
+  base=$(base_ref) || base=""
+  {
+    [[ -n "$base" ]] && git diff --name-only --diff-filter=ACMR "$base"... 2>/dev/null
     git diff --name-only --diff-filter=ACMR
     git diff --name-only --cached --diff-filter=ACMR
-    git ls-files --others --exclude-standard; } | sort -u
+    git ls-files --others --exclude-standard
+  } | sort -u
+}
+
+all_files() { git ls-files -co --exclude-standard | sort -u; }
+
+# Reads paths on stdin; prints the existing ones that each linter takes.
+shell_files() { grep -E '\.(sh|bash|bats)$|^tests/stubs/[^/]+$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
+md_files() { grep -E '\.md$' | grep -vE '^docs/research/|^docs/reviews/[^/]*-[^/]*\.md$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
+workflow_files() { grep -E '(^|/)\.github/workflows/[^/]+\.ya?ml$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
+
+lint_files() { # reads paths on stdin
+  local rc=0 list sh=() md=() mdl=() wf=() f
+  list=$(cat)
+  while IFS= read -r f; do [[ -n "$f" ]] && sh+=("$f"); done < <(shell_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && md+=("$f"); done < <(md_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && mdl+=("$f"); done < <(md_files <<<"$list") # the same set: saved reports are left out
+  while IFS= read -r f; do [[ -n "$f" ]] && wf+=("$f"); done < <(workflow_files <<<"$list")
+  if ((${#sh[@]})); then
+    if need shellcheck "$TOOLS_HINT"; then shellcheck "${sh[@]}" || rc=1; else rc=1; fi
+    if need shfmt "$TOOLS_HINT"; then shfmt -d "${sh[@]}" || rc=1; else rc=1; fi
+  fi
+  if ((${#md[@]})); then
+    if need "$MDLINT" "$NPM_HINT"; then "$MDLINT" "${md[@]}" >/dev/null 2>"$TMP_LINT" || {
+      cat "$TMP_LINT" >&2
+      rc=1
+    }; else rc=1; fi
+  fi
+  if ((${#mdl[@]})); then
+    if need lychee "$TOOLS_HINT"; then lychee --offline --include-fragments --no-progress "${mdl[@]}" >"$TMP_LINT" 2>&1 || {
+      cat "$TMP_LINT" >&2
+      rc=1
+    }; else rc=1; fi
+  fi
+  if ((${#wf[@]})); then
+    if need actionlint "$TOOLS_HINT"; then actionlint "${wf[@]}" || rc=1; else rc=1; fi
+  fi
+  echo "shell ${#sh[@]}  markdown ${#md[@]}  links ${#mdl[@]}  workflows ${#wf[@]}"
+  return $rc
 }
 
 lint() {
   echo "== lint"
+  local rc=0
+  TMP_LINT=$(mktemp)
   if [[ $CHANGED -eq 1 ]]; then
-    mapfile -t FILES < <(changed_files)
-    [[ ${#FILES[@]} -eq 0 ]] && { skip "no changed files"; return; }
-    # kit: run the linter on "${FILES[@]}" only, e.g.
-    #   npx eslint --max-warnings 0 "${FILES[@]}"      (filter to *.ts,*.tsx first)
-    #   ruff check "${FILES[@]}"
-    not_configured "lint --changed"
+    local list
+    list=$(changed_files)
+    if [[ -z "$list" ]]; then
+      rm -f "$TMP_LINT"
+      skip "no changed files"
+      return
+    fi
+    lint_files <<<"$list" || rc=1
   else
-    # kit: format check + lint + type-check, e.g.
-    #   npx prettier --check . && npx eslint . --max-warnings 0 && npx tsc --noEmit
-    #   ruff format --check . && ruff check . && mypy .
-    not_configured "lint"
+    all_files | lint_files || rc=1
   fi
+  rm -f "$TMP_LINT"
+  return $rc
 }
 
 test_() {
   echo "== test"
-  # kit: e.g. npx vitest run | pytest -q | go test ./... | swift test
-  # Print the pass/fail/skip counts; the reviewer compares them against the base branch.
-  not_configured "test"
+  if [[ -n "${KIT_EXPECT_BASH:-}" ]]; then
+    echo "bash on PATH: $(bash -c 'echo $BASH_VERSION')"
+  fi
+  need "$BATS" "$NPM_HINT" || return 1
+  "$BATS" --formatter tap -r tests | awk '
+    { print }
+    /^ok / { if (/ # skip/) s++; else p++ }
+    /^not ok / { f++ }
+    END { printf "tests: %d passed, %d failed, %d skipped\n", p, f, s }'
+
 }
 
 build() {
   echo "== build"
-  # kit: e.g. npm run build | docker build . | go build ./...
-  not_configured "build"
+  skip "the kit ships source; nothing to build"
 }
 
 security() {
   echo "== security"
   local rc=0
-  # Secret scan of the working tree. (Run `gitleaks git` once on a new repo to scan history.)
-  if command -v gitleaks >/dev/null; then
+  # Secret scan of the working tree with .gitleaks.toml and .gitleaksignore from the repo root.
+  if need gitleaks "$TOOLS_HINT"; then
     gitleaks dir . --no-banner --redact || rc=1
   else
-    echo "FAIL: gitleaks not installed (brew install gitleaks)" >&2; rc=1
+    rc=1
   fi
-  # Dependency audit. kit: keep the one for this stack, delete the rest.
-  #   npm audit --audit-level=high || rc=1
-  #   pip-audit || rc=1
-  #   govulncheck ./... || rc=1
-  not_configured "dependency audit" || rc=1
-  # SAST: semgrep with the stack's ruleset, failing on ERROR severity only.
-  if command -v semgrep >/dev/null; then
-    semgrep scan --config "${SEMGREP_CONFIG:-p/default}" --error --severity ERROR --quiet . || rc=1
-  else
-    echo "FAIL: semgrep not installed (pip install semgrep)" >&2; rc=1
-  fi
+  skip "dependency audit: no runtime dependencies; dev tools pinned by package-lock.json and scripts/tools.sh; npm audit advisories in markdownlint-cli2's dev-only dependency tree accepted 2026-11-09, fixes arrive through Dependabot"
+  skip "semgrep: shellcheck covers the shell code"
   # Files that should never be tracked.
   if git ls-files | grep -E '(^|/)\.env(\.[^/]+)?$|\.pem$|\.p12$|(^|/)id_(rsa|ed25519)$' | grep -v '\.example$'; then
-    echo "FAIL: sensitive file tracked (above)" >&2; rc=1
+    echo "FAIL: sensitive file tracked (above)" >&2
+    rc=1
   fi
   return $rc
 }
 
+doctor() { bash scripts/doctor.sh; }
+
 run_all() {
-  local rc=0
-  lint || rc=1; test_ || rc=1; build || rc=1; security || rc=1; bash scripts/doctor.sh || rc=1
+  local rc=0 t
+  # The two check-stamp lines let the Stop hook tell when checks last passed; keep them when tailoring.
+  t=$(bash scripts/check-stamp.sh tree 2>/dev/null)
+  lint || rc=1
+  test_ || rc=1
+  build || rc=1
+  security || rc=1
+  doctor || rc=1
+  [[ $rc -eq 0 && -n "$t" ]] && bash scripts/check-stamp.sh record "$t"
   echo "== all: $([[ $rc -eq 0 ]] && echo PASS || echo FAIL)"
   return $rc
 }
 
 case "${1:-}" in
-  lint)     lint ;;
-  test)     test_ ;;
-  build)    build ;;
+  lint) lint ;;
+  test) test_ ;;
+  build) build ;;
   security) security ;;
-  doctor)   bash scripts/doctor.sh ;;
-  all)      run_all ;;
-  *)        sed -n '2,4p' "$0"; exit 2 ;;
+  doctor) doctor ;;
+  all) run_all ;;
+  *)
+    sed -n '2,4p' "$0"
+    exit 2
+    ;;
 esac

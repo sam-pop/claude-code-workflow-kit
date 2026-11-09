@@ -1,0 +1,14 @@
+{
+  "name": "claude-code-workflow-kit-dev",
+  "private": true,
+  "description": "Maintainer tooling for the kit; nothing here is installed into target repos.",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "bats": "1.13.0",
+    "bats-assert": "2.2.4",
+    "bats-support": "0.3.0",
+    "markdownlint-cli2": "0.24.0"
+  }
+}

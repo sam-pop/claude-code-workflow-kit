@@ -8,8 +8,4 @@ Format: `- **Oxx** (opened YYYY-MM-DD, decide by YYYY-MM-DD, owner) — the ques
 
 ## Engineering
 
-- **O1** (opened {{YYYY-MM-DD}}, decide by {{YYYY-MM-DD}}, {{owner}}) — {{question}}. Blocks: {{what}}.
-
-## Product
-
-- **O2** (opened {{YYYY-MM-DD}}, decide by {{YYYY-MM-DD}}, {{product owner}}) — {{question}}. Blocks: {{what}}.
+(none)

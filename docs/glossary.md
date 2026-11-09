@@ -13,4 +13,9 @@ Rules:
 
 | Term | Meaning | In code |
 |---|---|---|
-| {{Term}} | {{One sentence. What it is, not how it is implemented.}} | {{type, table or module}} |
+| Risk tier | Low, Medium or High: how much a change can hurt, which sets the reviewer's effort. | `CLAUDE.md` Workflow, Risk tiers |
+| Rung | One step of the writer ladder: a fresh writer at a higher effort or model after the previous one failed. | `CLAUDE.md` Workflow, Writer ladder |
+| `.kit` sibling | The kit's copy of a file, saved beside a tailored file during install or upgrade, for a merge by hand. | `scripts/install.sh` (`tailored`) |
+| Upgrade class | How `install.sh --upgrade` sorts each kit file: replaced, current, tailored, tailored (kit unchanged), new, skipped, never re-added, retired. | `scripts/install.sh` (`classify`, `ORDER`) |
+| Dogfood copy | A root file that is the kit's own install of the same path under `template/`, possibly tailored to the kit. | repo root vs `template/` |
+| Check stamp | The record of the working tree on which `scripts/check.sh all` last passed. | `scripts/check-stamp.sh`; stored in `$(git rev-parse --git-path kit/check-passed)` |
