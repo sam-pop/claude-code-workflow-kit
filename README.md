@@ -21,12 +21,41 @@
 
 ---
 
+## TL;DR
+
+**What it does.** You install a few agents, hooks, docs and scripts into your repo, with one `scripts/check.sh` that every check runs through. From then on Claude Code plans, implements, checks and reviews every change the same way. A separate reviewer re-runs the checks itself instead of taking the agent's word for it. Decisions and open questions are written down, so you can see what was decided and what still needs you.
+
+**Get started.** You need Claude Code v2.1.292 or later, `git`, `bash` and `python3`; `gitleaks` and `semgrep` for the security check.
+
+```bash
+git clone https://github.com/sam-pop/claude-code-workflow-kit.git
+claude-code-workflow-kit/scripts/install.sh /path/to/your-repo
+```
+
+Then open Claude Code in your repo and say **Read TAILOR.md and tailor the kit to this repo.** It asks one round of questions, wires `scripts/check.sh` to your real lint, test and build commands, and runs it. Review and commit the result. If other people commit to that repo, read [Choosing a tier](#choosing-a-tier) first: hooks run code on your machine.
+
+**Use it.** For a small fix, say "Fix X, run check.sh all, then the reviewer agent." For a larger change, say "Run the planner on X", answer its questions, then "Now the writer, then the reviewer."
+
+**Upgrade.** Update your clone of the kit, then run the installer in upgrade mode:
+
+```bash
+git -C claude-code-workflow-kit pull
+claude-code-workflow-kit/scripts/install.sh --upgrade /path/to/your-repo
+```
+
+Then say **Read .claude/kit-upgrade.md** in your repo. Files you changed are never overwritten: the kit's new version arrives beside them as `.kit` files, and that session merges them. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
+
+Details for each step: [Quick start](#quick-start), [Daily use](#daily-use), [Upgrading the kit](#upgrading-the-kit).
+
+---
+
 Claude Kit is a set of templates, agents, hooks and scripts you install into a repository. A Claude Code session then **tailors it to that repo's stack**, and from that point every change runs through a short, verifiable process: plan, implement, check, review. Claude follows that process instead of improvising one each time.
 
 It's for anyone using Claude Code on real projects who needs to **trust the result**: to know what the agent decided on its own, what was actually tested, and what still needs a human eye. It works the same whether you code alone, on a team, or mostly review code that others (or agents) wrote.
 
 ## Contents
 
+- [TL;DR](#tldr)
 - [Why this exists](#why-this-exists)
 - [Principles](#principles)
 - [How it works](#how-it-works)

@@ -5,3 +5,4 @@
 /docs/reviews/*-*.md
 /.claude/kit-upgrade.md
 /.maintainer-words
+/.claude/settings.local.json
