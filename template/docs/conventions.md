@@ -51,6 +51,16 @@ Test runner: {{name}}. Pattern: {{arrange / act / assert, or the project's own}}
 - Never log {{personal data: names, emails, tokens, addresses, document contents}}.
 - Secrets never in source, tracked config or logs.
 
+## Known agent failure modes
+
+- A check reported as passed that never ran: paste the exit code and the output tail; 0 tests or a narrowed filter is not a pass.
+- `cmd; echo`, `cmd | tail` or `|| true` hiding an exit code: keep the command's own status.
+- Stage by explicit path, never `git add -A` or `git add .`.
+- Before committing, check the branch and `git rev-list --left-right --count origin/<base>...HEAD`.
+- Kill only processes you started, by PID; never a pattern `pkill`.
+- Write reports and scratch output outside any worktree the harness may remove.
+- Add a line here when an agent fails in a new way.
+
 ## Anti-patterns
 
 Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh lint`; **judgment** rows are the reviewer's.
@@ -74,3 +84,4 @@ Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh
 - No row of the Anti-patterns table is violated.
 - Any new third-party dependency was called out for approval before being added.
 - Any open item touched is still open, or the owner closed it and `docs/decisions.md` records it.
+- A deploy is done when a post-deploy check against production passes, not when the deploy command exits.

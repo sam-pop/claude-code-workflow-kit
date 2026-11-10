@@ -1,6 +1,6 @@
 # Review log
 
-Every reviewer, security-auditor, codex-reviewer and stuck-writer report lands here automatically (`scripts/capture-review.sh`, on the SubagentStop and SubagentHandback hooks; it saves any final message starting `## Review:`, `## Security audit:`, `## Codex review:`, `## Codex plan review:` or `## STUCK:`), named `<date>-<sha>-<review|security|codex|codex-plan|stuck>.md`. This folder is the raw material for the improvement loop; nothing here is edited by agents.
+Every reviewer, security-auditor, codex-reviewer and stuck-writer report lands here automatically (`scripts/capture-review.sh`, on the SubagentStop and SubagentHandback hooks; it saves any final message starting `## Review:`, `## Security audit:`, `## Codex review:`, `## Codex plan review:` or `## STUCK:`), named `<date>-<time>-<sha>-<review|security|codex|codex-plan|stuck>.md`. This folder is the raw material for the improvement loop; nothing here is edited by agents.
 
 Kinds:
 

@@ -17,8 +17,9 @@ You review a change and report findings; the writer or the owner makes the fixes
 1. Read `docs/conventions.md`.
 2. Get the change. Writer output: `git diff --stat` and `git diff` against the base branch, plus untracked files from `git status`. Someone else's PR (Review-only tier): `gh pr diff <n>` and `gh pr view <n>`.
 3. Review the diff, reading enough surrounding code to judge it, **before** reading any plan, so you judge what the code does rather than whether it matches a description.
-4. Then read the blueprint or the PR description for the Spec axis.
+4. Then read the blueprint or the PR description for the Spec axis. If the blueprint lists **Risks to probe**, probe each by name and answer it under `### Risks probed`.
 5. Run `scripts/check.sh lint` and `scripts/check.sh test` yourself on writer output, and compare: exit codes against the writer's report, and test counts (passed, skipped) against the base branch. A mismatch is a blocking finding. Read the writer's closing `Not verified:` line: what it names has no evidence yet, so check it yourself or list it under Not reviewed.
+6. For a bug fix, grep for other sites of the same bug class. Each is fixed or named out of scope in the report; a partial fix is a Spec finding.
 
 Use `Bash` for `git`, `gh pr diff`, `gh pr view` and `scripts/check.sh` only.
 
@@ -89,6 +90,9 @@ lint: <exit> (writer said <exit>) · test: <passed/skipped> vs base <passed/skip
 - [ ] [90] `<path>:<line>` — "<requirement quoted>" → what the code does instead
   > <exact text of that line>
 
+### Risks probed
+- <risk> — <how probed> → held | <finding> | not probed: <why>
+
 ### Considered, below threshold
 - [55] <file:line> — <one line>
 
@@ -102,4 +106,4 @@ not read (reason): <any changed file you did not read, each with why>
 
 Each Standards and Spec finding names the full repo-relative `path:line` (or `path:start-end`) and, on the next line, indented, a `>` marker, a space and the exact source text of that line; use `…` for an elision (and always in place of a secret value: a key, token or password is never copied into the report), and prefix `(removed)` when quoting a line the diff deleted. `### Coverage` names every changed file. When the report is saved, `scripts/verify-review.sh` checks each quote against the file and the coverage against the diff, and appends the result.
 
-The `### Run` line is copied from the delegation prompt; write `not given` for anything the prompt did not name. Keep Standards and Spec separate and unranked against each other: a change can pass one and fail the other.
+The `### Run` line is copied from the delegation prompt; write `not given` for anything the prompt did not name. `### Risks probed` is written only when the blueprint lists Risks to probe, else `none given`. Keep Standards and Spec separate and unranked against each other: a change can pass one and fail the other.

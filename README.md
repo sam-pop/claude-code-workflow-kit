@@ -45,7 +45,7 @@ git -C claude-code-workflow-kit pull
 claude-code-workflow-kit/scripts/install.sh --upgrade /path/to/your-repo
 ```
 
-Then say **Read .claude/kit-upgrade.md** in your repo. Files you changed are never overwritten: the kit's new version arrives beside them as `.kit` files, and that session merges them. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
+Then say **Read .claude/kit-upgrade.md** in your repo. Files you changed are never overwritten: the kit's new version arrives beside them as `.kit` files, with the version you installed from as `.kit-base`, and that session merges them three-way, so only lines both you and the kit changed need a decision. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 **Extras.** A fresh install is the core process. Model profiles, a Codex second opinion, a stop-warning hook, review verification and review stats are extras, off until you run `scripts/extras.sh on <name>`; see [Core and extras](#core-and-extras).
 
@@ -222,7 +222,7 @@ git clone https://github.com/sam-pop/claude-code-workflow-kit.git
 claude-code-workflow-kit/scripts/install.sh /path/to/your-repo
 ```
 
-The installer **never overwrites**. If a file already exists, the kit's version is written beside it as `<name>.kit` for you to merge. It also writes `.claude/kit-version` and `.claude/kit-manifest` so a later [upgrade](#upgrading-the-kit) can tell an untouched file from a tailored one; commit both.
+The installer **never overwrites**. If a file already exists, the kit's version is written beside it as `<name>.kit` for you to merge (on an upgrade, with a `<name>.kit-base` for a three-way merge). It also writes `.claude/kit-version` and `.claude/kit-manifest` so a later [upgrade](#upgrading-the-kit) can tell an untouched file from a tailored one; commit both.
 
 ### Tailor it
 
@@ -320,6 +320,11 @@ lint: 0 (writer said 0) · test: 142 passed / 0 skipped vs base 138 / 0 · build
       selected date range" → the range is parsed but never applied.
   > const { from, to } = parseRange(req); … db.invoice.findMany({ where: { tenantId } })
 
+### Risks probed
+- A tenant's export includes another tenant's invoices — read the query and the
+  test fixtures → held
+- An empty date range returns every invoice — traced parseRange → finding [86] above
+
 ### Considered, below threshold
 - [70] src/lib/invoices/export.ts:12 — loads all rows into memory; fine at
       current volume, worth streaming above ~50k invoices.
@@ -410,9 +415,9 @@ All five are plain Markdown files with YAML frontmatter (four in `.claude/agents
 
 | Agent | Access | Loads `CLAUDE.md` | Job |
 |---|---|---|---|
-| **planner** | No edit tools; Bash by instruction | No | One decisive blueprint: approach, rejected alternative, risk tier, acceptance criteria, files, data, rollback path, tests, sequence, questions for the owner. |
+| **planner** | No edit tools; Bash by instruction | No | One decisive blueprint: approach, rejected alternative, risk tier, acceptance criteria, files, data, rollback path, tests, risks to probe, sequence, questions for the owner. |
 | **writer** | Read/write | Yes | Implements the blueprint, writes tests that catch real bugs, runs the checks, reports exact output and the defaults it picked. Stops with a `## STUCK:` report instead of looping. |
-| **reviewer** | No edit tools; Bash by instruction | No | Reads the diff before the plan, re-runs the checks, reports Standards and Spec findings separately with confidence scores. Lower threshold (60%) for data, security and concurrency; 85% elsewhere. |
+| **reviewer** | No edit tools; Bash by instruction | No | Reads the diff before the plan, re-runs the checks, reports Standards and Spec findings separately with confidence scores. Looks for other sites of the same bug class and answers the blueprint's risks to probe by name. Lower threshold (60%) for data, security and concurrency; 85% elsewhere. |
 | **security-auditor** | No edit tools; Bash by instruction | No | Whole-system audit (trust boundaries, authorization, tenancy, data flows, secrets, rate limiting, logging). Critical and High block a release; an unreproduced one blocks until the owner rules on it, on the record. |
 | **codex-reviewer** *(extra)* | Runs one script (read-only Codex sandbox) | No | Relays `scripts/codex-review.sh`: a Codex second opinion on the plan, on High-risk diffs and on releases. |
 
