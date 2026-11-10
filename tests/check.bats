@@ -180,6 +180,88 @@ root_check_repo() {
   [[ ! -e "$BATS_TEST_TMPDIR/ran-rule-cjs" ]]
 }
 
+# A scratch repo that runs every real linter of the root check.sh, for the tests below that put
+# hostile files in the tree. Needs the pinned tools and markdownlint-cli2; skips when one is missing.
+lint_tree_repo() {
+  with_tools
+  require_real lychee
+  require_real actionlint
+  require_real shellcheck
+  require_real shfmt
+  if [[ ! -f "$REPO_ROOT/node_modules/markdownlint-cli2/markdownlint-cli2.mjs" ]]; then
+    [[ "${KIT_REQUIRE_REAL_TOOLS:-}" == 1 ]] && fail "markdownlint-cli2 is required (KIT_REQUIRE_REAL_TOOLS=1) but not installed"
+    skip "markdownlint-cli2 not installed"
+  fi
+  root_check_repo
+  cp "$REPO_ROOT/.markdownlint-cli2.jsonc" "$REPO_ROOT/.editorconfig" "$R/"
+  printf '/node_modules\n' >"$R/.gitignore"
+  ln -s "$REPO_ROOT/node_modules" "$R/node_modules"
+  printf '# R\n\nok\n' >"$R/ok.md"
+}
+
+@test "root check.sh: lychee ignores a lychee.toml in the tree, so its preprocess command never runs (H-A)" {
+  lint_tree_repo
+  mkdir -p "$R/docs/guide"
+  printf '#!/bin/sh\necho x >>"%s/ran-lychee-preprocess"\nexec cat "$1"\n' "$BATS_TEST_TMPDIR" >"$R/docs/guide/render"
+  chmod +x "$R/docs/guide/render"
+  printf 'preprocess = { command = "docs/guide/render" }\n' >"$R/lychee.toml"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-lychee-preprocess" ]]
+}
+
+@test "root check.sh: a tracked file named like an actionlint option is read as a file name, so -shellcheck=<path> runs nothing (H-A)" {
+  lint_tree_repo
+  mkdir -p "$R/docs/.github/workflows" "$R/-shellcheck=docs/.github/workflows" "$R/.github/workflows"
+  # a workflow with a run step, so actionlint has a script to hand to the injected "shellcheck"
+  printf 'name: x\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n' >"$R/.github/workflows/real.yml"
+  printf '#!/bin/sh\necho x >>"%s/ran-actionlint-argv"\necho "[]"\n' "$BATS_TEST_TMPDIR" >"$R/docs/.github/workflows/ci.yml"
+  chmod +x "$R/docs/.github/workflows/ci.yml"
+  printf 'name: x\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n' >"$R/-shellcheck=docs/.github/workflows/ci.yml"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-actionlint-argv" ]]
+}
+
+@test "root check.sh: a tracked Markdown file named --preprocess=<path> is read as a file name by lychee (H-A)" {
+  lint_tree_repo
+  mkdir -p "$R/docs/guide" "$R/--preprocess=docs/guide"
+  printf '#!/bin/sh\necho x >>"%s/ran-lychee-argv"\nexec cat "$1"\n' "$BATS_TEST_TMPDIR" >"$R/docs/guide/notes.md"
+  chmod +x "$R/docs/guide/notes.md"
+  printf '# Notes\n\ntext\n' >"$R/--preprocess=docs/guide/notes.md"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-lychee-argv" ]]
+}
+
+@test "root check.sh: a tracked script named like a shellcheck option is linted as a file (H-A)" {
+  lint_tree_repo
+  # shellcheck disable=SC2016  # the unquoted $1 is the finding under test
+  printf '#!/usr/bin/env bash\nrm $1\n' >"$R/-x.sh"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "SC2086"
+}
+
+@test "root check.sh: a .markdownlint-cli2.jsonc in the tree cannot make markdownlint rewrite files outside the repo (H-A)" {
+  lint_tree_repo
+  mkdir -p "$BATS_TEST_TMPDIR/outside"
+  printf '# T\n\n\nbad\n' >"$BATS_TEST_TMPDIR/outside/victim.md" # two blank lines: MD012, fixable
+  cp "$BATS_TEST_TMPDIR/outside/victim.md" "$BATS_TEST_TMPDIR/victim.orig"
+  # the config the repo itself uses, plus fix and an absolute glob to a file outside the clone
+  sed 's|^{|{ "fix": true, "globs": ["'"$BATS_TEST_TMPDIR"'/outside/*.md"],|' "$REPO_ROOT/.markdownlint-cli2.jsonc" >"$R/.markdownlint-cli2.jsonc"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  cmp "$BATS_TEST_TMPDIR/outside/victim.md" "$BATS_TEST_TMPDIR/victim.orig"
+  # and an in-repo file is not fixed either
+  printf '# T\n\n\nbad\n' >"$R/docs.md"
+  cp "$R/docs.md" "$BATS_TEST_TMPDIR/docs.orig"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  cmp "$R/docs.md" "$BATS_TEST_TMPDIR/docs.orig"
+}
+
 @test "root check.sh: tracked .tools/ or node_modules/ fails before any tool runs" {
   root_check_repo
   mkdir -p "$R/.tools/bin" "$R/node_modules/.bin"
