@@ -107,8 +107,8 @@ if [[ ! -f TAILOR.md ]] && compgen -G ".github/workflows/*.y*ml" >/dev/null; the
   gate=$(grep -lE "if:.*hashFiles\\('TAILOR\\.md'\\)" .github/workflows/*.y*ml 2>/dev/null | tr '\n' ' ')
   [[ -n "$gate" ]] && warn "the untailored-kit gate (hashFiles('TAILOR.md')) is still in: $gate; delete the 'Kit not tailored yet' step and every if: line that uses it"
 fi
-kits=$(git ls-files -co --exclude-standard '*.kit' 2>/dev/null | wc -l | tr -d ' ')
-[[ "$kits" != 0 ]] && warn "$kits unmerged *.kit file(s): merge each into its original, then delete it"
+kits=$(git ls-files -co --exclude-standard '*.kit' '*.kit-base' 2>/dev/null | wc -l | tr -d ' ')
+[[ "$kits" != 0 ]] && warn "$kits unmerged *.kit file(s) (*.kit or *.kit-base): merge each .kit into its original, then delete both"
 [[ -f .claude/kit-upgrade.md ]] && warn "upgrade merge not finished: .claude/kit-upgrade.md is still present (open Claude Code and say: Read .claude/kit-upgrade.md)"
 
 # 6. Review log stats, for the monthly pass: only with the metrics extra on.
