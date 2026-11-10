@@ -2,6 +2,12 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/install.sh` reads the version from the first `## [x.y]` heading below.
 
+## [Unreleased]
+
+### Fixed
+
+- `verify-review.sh` stopped with a Python traceback and no `### Verification` block when a finding cited a path containing a NUL byte. Such a citation is now `unverified — path outside the repository`, and control characters in a cited path print as `?`.
+
 ## [1.6] — 2026-11-10
 
 ### Added
