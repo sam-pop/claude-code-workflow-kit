@@ -367,9 +367,10 @@ ARG="${2:-}"
 resolve_range "$MODE" "$ARG" || exit 2
 refuse_tooling
 
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d)" || exit 1
 cleanup() { rm -rf "$tmp"; }
 trap cleanup EXIT
+tmp="$(cd "$tmp" && pwd -P)" || exit 1 # absolute: a relative TMPDIR would break the cd steps
 
 : >"$tmp/untracked.z"
 if [[ "$MODE" == high ]]; then
@@ -458,9 +459,17 @@ if [[ "$MODE" == high ]]; then
     # repository is discovered there. From inside the tree, a tracked config, HEAD, objects/ and refs/
     # would make it a bare repository whose config (filter drivers) and info/attributes git apply would
     # read and run. The ceiling is the parent of $tmp, because git ignores a ceiling equal to its
-    # working directory and would keep climbing into any work tree above $TMPDIR; an inherited GIT_DIR,
-    # GIT_WORK_TREE or GIT_INDEX_FILE is cleared for the same reason. Outside any repository, git apply
-    # is a plain patch tool.
+    # working directory and would keep climbing into any work tree above $TMPDIR. An inherited GIT_DIR,
+    # GIT_WORK_TREE or GIT_INDEX_FILE is cleared because it does not make git climb: it puts git apply
+    # in repository mode with that repository's config and info/attributes, so the user's own filter
+    # drivers would run on the patched files. Outside any repository, git apply is a plain patch tool.
+    # A positive check first: if git still sees a repository from $tmp (for example a ceiling that a
+    # character in $TMPDIR splits), nothing is sent.
+    (cd "$tmp" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_CEILING_DIRECTORIES="$(dirname -- "$tmp")" \
+      git rev-parse --git-dir >/dev/null 2>&1) && {
+      echo "codex-review: a git repository is visible from the temp dir; not sent" >&2
+      exit 1
+    }
     (cd "$tmp" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_CEILING_DIRECTORIES="$(dirname -- "$tmp")" \
       git -c core.hooksPath=/dev/null apply --directory=wt "$tmp/work.patch") \
       || {
@@ -627,13 +636,18 @@ scan() { # dir [extra flag]
 }
 if ! scan "$tmp/wt" || ! scan "$tmp/scan" --ignore-gitleaks-allow; then
   echo "secrets found in what Codex would read; not sent" >&2
-  # A finding in a copy under scan/flat/<n> names only the number: say which file that is (at most 100
-  # lines, names made printable). The map stays in $tmp; it is not part of what Codex receives.
+  # A finding in a copy under scan/flat/<n> names only the number: say which file that is (the first 100
+  # entries, then a count; a long name keeps its end, with newlines and other unprintable characters made
+  # printable). The map stays in $tmp; it is not part of what Codex receives.
   if [[ -s "$tmp/flatmap.z" ]]; then
     echo "scan/flat/<n> copies, by number:" >&2
+    k=0
     while IFS=$'\t' read -r -d '' num path; do
-      printf '  flat/%s = %s\n' "$num" "$(printf '%s' "$path" | LC_ALL=C tr '\n\r' '??' | safe_name)"
-    done <"$tmp/flatmap.z" | head -n 100 >&2
+      k=$((k + 1))
+      ((k > 100)) && continue
+      printf '  flat/%s = %s\n' "$num" "$(printf '%s' "$path" | LC_ALL=C tr -c ' -~' '?' | LC_ALL=C awk '{ if (length($0) > 40) $0 = "..." substr($0, length($0) - 36); print "\x27" $0 "\x27" }')" >&2
+    done <"$tmp/flatmap.z"
+    ((k > 100)) && echo "  ... $((k - 100)) more" >&2
   fi
   exit 5
 fi

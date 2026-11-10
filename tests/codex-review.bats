@@ -913,7 +913,7 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   cmp "$tree/blob.bin" blob.bin
 }
 
-@test "the working-tree patch still reaches the review tree when TMPDIR sits inside a git work tree or GIT_DIR is inherited" {
+@test "the working-tree patch still reaches the review tree when TMPDIR sits inside a git work tree" {
   # git ignores a ceiling equal to its cwd, so discovery from the temp directory would climb into a
   # repository above it; and an inherited GIT_DIR would put git apply in repository mode.
   mkdir -p "$BATS_TEST_TMPDIR/outer/tmp"
@@ -923,9 +923,49 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   assert_success
   assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three"
   rm -rf "$STUB_LOG/codex.1.tree"
+}
+
+@test "a git repository visible from the temp dir (a ':' in TMPDIR splits the ceiling) refuses with exit 1 and codex is not called" {
+  mkdir -p "$BATS_TEST_TMPDIR/a:b/tmp"
+  git -C "$BATS_TEST_TMPDIR/a:b" init -q
+  echo "three" >>src/app.txt
+  TMPDIR="$BATS_TEST_TMPDIR/a:b/tmp" run scripts/codex-review.sh high
+  assert_failure 1
+  assert_output --partial "a git repository is visible from the temp dir"
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "a relative TMPDIR works: the review tree is built and the working-tree edit arrives" {
+  mkdir -p "$BATS_TEST_TMPDIR/rel"
+  echo "three" >>src/app.txt
+  TMPDIR=../rel STUB_CODEX_TREE=1 run scripts/codex-review.sh high
+  assert_success
+  assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three"
+}
+
+@test "a refused scan keeps the end of a long path in the numbered-copy map and counts entries past 100" {
+  mkdir -p aaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbb/cccccccccccccccccccc
+  deep=aaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbb/cccccccccccccccccccc/secret-config.txt
+  printf 'token FAKE-SECRET-abc gitleaks:gitleaks:allowallow\n' >"$deep"
+  mkdir -p many
+  for i in $(seq 1 104); do echo "$i" >"many/f$i.txt"; done
+  run scripts/codex-review.sh high
+  assert_failure 5
+  assert_output --partial "/secret-config.txt'"
+  assert_output --partial "  ... 5 more"
+  refute_output --partial "aaaaaaaaaaaaaaaaaaaa/bbbb"
+}
+
+@test "an inherited GIT_DIR does not put git apply in repository mode: the user's filter driver does not run on patched files" {
+  git config filter.mark.smudge "sh -c 'echo ran >>\"$BATS_TEST_TMPDIR/smudged\"; cat'"
+  git config filter.mark.clean cat
+  mkdir -p .git/info
+  echo "* filter=mark" >.git/info/attributes
+  echo "three" >>src/app.txt
   GIT_DIR="$TARGET/.git" STUB_CODEX_TREE=1 run scripts/codex-review.sh high
   assert_success
-  assert_equal "$(tail -n 1 "$STUB_LOG/codex.2.tree/src/app.txt")" "three"
+  [[ ! -e "$BATS_TEST_TMPDIR/smudged" ]]
+  assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three"
 }
 
 @test "a nested gitleaks:gitleaks:allowallow does not exempt a changed, an untracked or a plan file" {

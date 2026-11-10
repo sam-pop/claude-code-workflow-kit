@@ -219,3 +219,22 @@ root_check_repo() {
   assert_failure 1
   assert_output --partial "files under .tools/ or node_modules/ are tracked"
 }
+
+@test "root check.sh: GIT_LITERAL_PATHSPECS does not switch off the tracked-tools guard" {
+  root_check_repo
+  mkdir -p "$R/.tools/bin"
+  printf '#!/usr/bin/env bash\n' >"$R/.tools/bin/x"
+  git -C "$R" add -f .tools/bin/x
+  GIT_LITERAL_PATHSPECS=1 run "$R/scripts/check.sh" build
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+}
+
+@test "root check.sh: a failing git ls-files fails the guard closed" {
+  export KIT_STUCK_INNER=1
+  mkdir -p "$BATS_TEST_TMPDIR/nogit/scripts"
+  cp "$REPO_ROOT/scripts/check.sh" "$BATS_TEST_TMPDIR/nogit/scripts/"
+  GIT_CEILING_DIRECTORIES="$BATS_TEST_TMPDIR" run "$BATS_TEST_TMPDIR/nogit/scripts/check.sh" build
+  assert_failure 1
+  assert_output --partial "git ls-files failed"
+}
