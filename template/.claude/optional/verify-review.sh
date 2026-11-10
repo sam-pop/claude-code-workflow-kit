@@ -93,6 +93,8 @@ ROOT = os.path.realpath(".")
 
 
 def inside(path):
+    if "\0" in path:  # os.path raises ValueError on a NUL; such a path names no file in the repo
+        return False
     real = os.path.realpath(path)
     return not os.path.isabs(path) and (real == ROOT or real.startswith(ROOT + os.sep))
 
@@ -136,7 +138,7 @@ for name in ("Standards", "Spec"):
             continue
         score, path, start = m.group(1), m.group(2), int(m.group(3))
         end = int(m.group(4) or start)
-        where = f"[{score}] {path}:{start}" + (f"-{end}" if end != start else "")
+        where = f"[{score}] " + re.sub(r"[\x00-\x1f\x7f]", "?", path) + f":{start}" + (f"-{end}" if end != start else "")
         quote = None
         for nxt in body[i + 1:]:
             if not nxt.strip():

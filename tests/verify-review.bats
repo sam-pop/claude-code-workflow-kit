@@ -210,3 +210,14 @@ verify() { scripts/verify-review.sh "$REPORT"; }
   assert_line "coverage: 2 changed files, 0 not in ### Coverage"
   assert_line --regexp 'base: origin/main@'
 }
+
+@test "a NUL byte in a cited path is unverified and printed as ?, not a crash" {
+  report $'- [ ] [90] src/app.jsNULBYTE:3 — wrong\n  > const total = items.reduce((a, b) => a + b, 0);'
+  perl -pi -e 's/NULBYTE/\0/' "$REPORT"
+  run verify
+  assert_failure 1
+  assert_line "### Verification"
+  assert_line "quotes: 0 verified, 1 unverified, 0 unquoted"
+  assert_line "- unverified [90] src/app.js?:3 — path outside the repository"
+  refute_output --partial "Traceback"
+}
