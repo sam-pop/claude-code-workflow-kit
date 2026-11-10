@@ -18,7 +18,8 @@
 # at the commit the repo was installed from (commit= in .claude/kit-version, or --base), read from
 # the kit's git history. It is written only when its sha256 equals the manifest's hash for that file
 # (so a kit that was dirty at install time never gives a wrong base), and never on a --force run over
-# an unfinished merge. Without a base the merge session merges two-way, and kit-upgrade.md says why.
+# an unfinished merge. With no manifest a base is written only with --base, unchecked: that commit
+# must be the one the repo was installed from. Without a base the merge session merges two-way, and kit-upgrade.md says why.
 # State in the target: .claude/kit-version and .claude/kit-manifest (sha256 of each kit file as
 # installed). An unmodified file is replaced in place on upgrade; a modified one gets a .kit sibling.
 # Extras: a file under template/.claude/optional/ is an extra's, off there; on, it lives at its active
@@ -257,12 +258,15 @@ if upgrade:
 
 def kit_base_copy(rel, dst):
     """The kit's copy of this file at the install commit as bytes, or (None, reason). With a manifest
-    hash for the file the copy must match it; without a manifest, the first candidate that exists."""
+    hash for the file the copy must match it; without a manifest, only with --base (the commit the
+    user names), the first candidate that exists, unchecked."""
     if base_sha is None:
         return None, base_why
     want = prev_hash(rel, dst)
     if old and want is None:
         return None, "base copy does not match the manifest"
+    if not old and not base_arg:
+        return None, "no manifest; pass --base <kit commit you installed from>"
     found = False
     for cand in [rel] + ([active_path(rel)] if active_path(rel) else []):
         r = git_out("cat-file", "blob", base_sha + ":" + base_prefix + cand)

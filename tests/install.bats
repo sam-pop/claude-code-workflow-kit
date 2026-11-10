@@ -642,6 +642,15 @@ tailored_conventions_and_newer_kit() {
   cmp "$TARGET/docs/conventions.md.kit-base" "$KIT/template/docs/conventions.md"
 }
 
+@test "upgrade with kit-version's commit but no manifest and no --base writes no .kit-base (an unchecked base needs --base)" {
+  tailored_conventions_and_newer_kit
+  rm "$TARGET/.claude/kit-manifest"
+  run "$KIT2/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  [[ ! -e "$TARGET/docs/conventions.md.kit-base" ]]
+  grep -q "no base: no manifest; pass --base" "$TARGET/.claude/kit-upgrade.md"
+}
+
 @test "upgrade --base with a commit the kit does not have exits 1 and writes nothing" {
   tailored_conventions_and_newer_kit
   rm "$TARGET/.claude/kit-manifest" "$TARGET/.claude/kit-version"
