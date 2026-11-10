@@ -1028,3 +1028,69 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   done
   assert_equal "$(codex_calls)" 0
 }
+
+# gitleaks skips content whose first bytes look like a known binary format (%PDF, MZ, SQLite, gzip...).
+# The scan copies are written after a newline, which defeats that sniffing; the copy at the file's own
+# path stays byte-identical so name-based rules still match.
+@test "real gitleaks: an untracked file led by a binary signature (%PDF, MZ, SQLite) still refuses, in high mode (H-B)" {
+  with_tools
+  rm -f "$BATS_TEST_TMPDIR/stubs/gitleaks"
+  require_real gitleaks
+  for lead in '%%PDF-1.4\n' 'MZ\x90\x00\n' 'SQLite format 3\0'; do
+    # shellcheck disable=SC2059  # the leader holds printf escapes on purpose
+    printf "${lead}token=%s\n" "$(fake_token)" >src/leader.dat
+    run scripts/codex-review.sh high
+    assert_failure 5
+    rm -f src/leader.dat
+  done
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "real gitleaks: a committed file led by %PDF with a -diff attribute still refuses (H-B)" {
+  with_tools
+  rm -f "$BATS_TEST_TMPDIR/stubs/gitleaks"
+  require_real gitleaks
+  printf '*.dat -diff\n' >.gitattributes
+  printf '%%PDF-1.4\ntoken=%s\n' "$(fake_token)" >src/leader.dat
+  git add -A && git commit -qm "pdf-like file"
+  run scripts/codex-review.sh high
+  assert_failure 5
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "real gitleaks, plan: a plan whose own text starts with %PDF and holds a token refuses" {
+  with_tools
+  rm -f "$BATS_TEST_TMPDIR/stubs/gitleaks"
+  require_real gitleaks
+  printf '%%PDF-1.4\ntoken=%s\n' "$(fake_token)" >plan.md
+  run scripts/codex-review.sh plan plan.md
+  assert_failure 5
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "real gitleaks: a path-scoped rule still fires for an untracked nuget.config or .npmrc under node_modules/ or vendor/bundle/ (M-D)" {
+  with_tools
+  rm -f "$BATS_TEST_TMPDIR/stubs/gitleaks"
+  require_real gitleaks
+  for d in node_modules/pkg vendor/bundle; do
+    mkdir -p "$d"
+    printf '<configuration><packageSourceCredentials><s><add key="ClearTextPassword" value="Sup3rS3cretPassw0rdXyz" /></s></packageSourceCredentials></configuration>\n' >"$d/nuget.config"
+    run scripts/codex-review.sh high
+    assert_failure 5
+    rm -rf node_modules vendor
+    mkdir -p "$d"
+    printf '//registry.npmjs.org/:_authToken=npm_%s\n' "$(fake_token | cut -c5-)" >"$d/.npmrc"
+    run scripts/codex-review.sh high
+    assert_failure 5
+    rm -rf node_modules vendor
+  done
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "a global apply.whitespace=fix does not change the review copy of an edited file (L-E)" {
+  git config --global apply.whitespace fix
+  printf 'three   \n' >>src/app.txt
+  STUB_CODEX_TREE=1 run scripts/codex-review.sh high
+  assert_success
+  assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three   "
+}
