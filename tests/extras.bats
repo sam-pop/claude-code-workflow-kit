@@ -319,7 +319,7 @@ hook_json() { # event -> the JSON of that event's groups
   user_hook_json PostToolUse '"${CLAUDE_PROJECT_DIR}/scripts/check-stamp.sh" hook'
   before=$(hook_json PostToolUse)
   bash scripts/extras.sh on stop-warning >/dev/null
-  assert_equal "$(stop_hooks)" "2 stop-key"
+  assert_equal "$(stop_hooks)" "1 stop-key"
   run bash scripts/extras.sh off stop-warning
   assert_success
   assert_equal "$(hook_json PostToolUse)" "$before"

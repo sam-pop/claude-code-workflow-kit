@@ -42,7 +42,11 @@ if [[ -z "${STUB_GITLEAKS_BLIND:-}" ]]; then
   hits=$(cd "$src" && grep -rlE 'ghp_[A-Za-z0-9]{36}' . 2>/dev/null | sed 's#^\./##')
   if [[ -n "$hits" ]]; then
     if [[ -n "$rep" ]]; then
-      { printf '['; printf '%s\n' "$hits" | sed 's#.*#{"File": "&"}#' | paste -sd, -; printf ']\n'; } >"$rep"
+      {
+        printf '['
+        printf '%s\n' "$hits" | sed 's#.*#{"File": "&"}#' | paste -sd, -
+        printf ']\n'
+      } >"$rep"
     fi
     echo "stub gitleaks: token found" >&2
     exit 1

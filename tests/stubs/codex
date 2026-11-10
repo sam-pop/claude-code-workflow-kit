@@ -30,8 +30,11 @@ if [[ $skip == 0 ]] && ! (cd "$dir" && git rev-parse --git-dir >/dev/null 2>&1);
   echo "Not inside a trusted directory and --skip-git-repo-check was not specified." >&2
   exit 1
 fi
-env | grep '^GIT_CONFIG_' | sort >"$log.$n.env"
-(cd "$dir" && git rev-parse --git-dir >/dev/null 2>&1; echo $? >"$log.$n.gitrc")
+env | grep -E '^GIT_CONFIG_(COUNT|KEY_|VALUE_)' | sort >"$log.$n.env"
+(
+  cd "$dir" && git rev-parse --git-dir >/dev/null 2>&1
+  echo $? >"$log.$n.gitrc"
+)
 (cd "$dir" && find . -print | sort) >"$log.$n.ls"
 [[ "${STUB_CODEX_TREE:-}" == 1 ]] && cp -R "$dir" "$log.$n.tree"
 if [[ -n "${STUB_CODEX_FAIL_MODEL:-}" && "$model" == "$STUB_CODEX_FAIL_MODEL" ]]; then

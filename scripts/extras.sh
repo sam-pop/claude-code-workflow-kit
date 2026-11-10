@@ -84,13 +84,15 @@ r, t = os.path.realpath(sys.argv[1]), os.path.realpath(".")
 sys.exit(0 if r == t or r.startswith(t + os.sep) else 1)' "$1"
 }
 
-# hooks <has|add|remove> <script> [<event> <argument> <timeout>]
+# hooks <has|add|remove> <script> <event> <argument> [<timeout>]
+# The kit's hook is the exact command the kit writes (surrounding whitespace aside), in its event; a
+# user's hook that only mentions the script is never matched, moved or removed.
 # has: 0 present, 1 absent. add: 0 added, 1 already there. remove: 0 removed, 1 none there.
 # Any: 3 settings.json missing, 4 not valid JSON or not the hooks layout, 5 its real path leaves the repo.
 hooks() {
   python3 -I - "$SETTINGS" "$@" <<'PY'
 import json, os, sys, tempfile
-path, op, script = sys.argv[1:4]
+path, op, script, event, arg = sys.argv[1:6]
 if not os.path.isfile(path):
     sys.exit(3)
 real, top = os.path.realpath(path), os.path.realpath(".")
@@ -106,13 +108,13 @@ if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict):
 for groups in data.get("hooks", {}).values():
     if not isinstance(groups, list) or not all(isinstance(g, dict) and isinstance(g.get("hooks", []), list) for g in groups):
         sys.exit(4)
-needle = "scripts/" + script
+kit_cmd = '"${CLAUDE_PROJECT_DIR}/scripts/' + script + '" ' + arg
 
-def mine(h):
-    return isinstance(h, dict) and needle in str(h.get("command", ""))
+def mine(h, ev):
+    return ev == event and isinstance(h, dict) and isinstance(h.get("command"), str) and h["command"].strip() == kit_cmd
 
 def present():
-    return any(mine(h) for groups in data.get("hooks", {}).values() for g in groups for h in g.get("hooks", []))
+    return any(mine(h, ev) for ev, groups in data.get("hooks", {}).items() for g in groups for h in g.get("hooks", []))
 
 def write():
     st = os.stat(path)
@@ -132,30 +134,29 @@ if op == "has":
 if op == "add":
     if present():
         sys.exit(1)
-    event, arg, timeout = sys.argv[4:7]
-    cmd = '"${CLAUDE_PROJECT_DIR}/scripts/' + script + '" ' + arg
+    timeout = sys.argv[6]
     data.setdefault("hooks", {}).setdefault(event, []).append(
-        {"hooks": [{"type": "command", "command": cmd, "timeout": int(timeout)}]})
+        {"hooks": [{"type": "command", "command": kit_cmd, "timeout": int(timeout)}]})
     write()
     sys.exit(0)
 if op == "remove":
     if not present():
         sys.exit(1)
     hooks = data["hooks"]
-    for event in list(hooks):
+    for ev in list(hooks):
         kept = []
-        for g in hooks[event]:
+        for g in hooks[ev]:
             hs = g.get("hooks", [])
-            left = [h for h in hs if not mine(h)]
+            left = [h for h in hs if not mine(h, ev)]
             if hs and not left:
                 continue  # a group that held only this hook goes with it
             if len(left) != len(hs):
                 g["hooks"] = left
             kept.append(g)
-        if hooks[event] and not kept:
-            del hooks[event]
+        if hooks[ev] and not kept:
+            del hooks[ev]
         else:
-            hooks[event] = kept
+            hooks[ev] = kept
     write()
     sys.exit(0)
 sys.exit(2)
@@ -176,7 +177,7 @@ move() { # from to
 }
 
 switch() { # on|off name
-  local want=$1 x=$2 files f p st h ev sc arg to rc changed=0 dst
+  local want=$1 x=$2 files f p st h ev sc arg to rc changed=0 src dst moving
   files=$(files_of "$x") || {
     echo "unknown extra: $x" >&2
     usage
@@ -192,7 +193,7 @@ switch() { # on|off name
     fi
     if [[ -n "$h" ]]; then
       read -r ev sc arg to <<<"$h"
-      hooks remove "$sc" && echo "hook removed: $ev scripts/$sc ($SETTINGS)"
+      hooks remove "$sc" "$ev" "$arg" && echo "hook removed: $ev scripts/$sc ($SETTINGS)"
     fi
     echo "$x: not installed"
     return 0
@@ -202,15 +203,25 @@ switch() { # on|off name
       echo "refused: both $(dormant "$f") and $(active "$f") exist; keep one, then run this again" >&2
       return 1
     fi
-    if [[ "$want" == on ]]; then dst=$(active "$f"); else dst=$(dormant "$f"); fi
-    if [[ $(where "$f") != "$want" && $(where "$f") != none ]] && ! inside "$dst"; then
-      echo "refused: $dst resolves outside the repo (a symlink on the way?)" >&2
-      return 1
+    if [[ "$want" == on ]]; then
+      src=$(dormant "$f")
+      dst=$(active "$f")
+    else
+      src=$(active "$f")
+      dst=$(dormant "$f")
+    fi
+    if [[ $(where "$f") != "$want" && $(where "$f") != none ]]; then
+      for moving in "$src" "$dst"; do
+        if ! inside "$moving"; then
+          echo "refused: $moving resolves outside the repo (a symlink on the way?)" >&2
+          return 1
+        fi
+      done
     fi
   done
   if [[ -n "$h" ]]; then
     read -r ev sc arg to <<<"$h"
-    hooks has "$sc"
+    hooks has "$sc" "$ev" "$arg"
     rc=$?
     if ((rc > 1)) && [[ "$want" == on || "$rc" != 3 ]]; then
       echo "refused: $(hook_problem "$rc"); nothing changed" >&2
@@ -236,7 +247,7 @@ switch() { # on|off name
       rc=$?
       ((rc == 0)) && echo "hook added: $ev runs scripts/$sc $arg ($SETTINGS)" && changed=1
     else
-      hooks remove "$sc"
+      hooks remove "$sc" "$ev" "$arg"
       rc=$?
       ((rc == 0)) && echo "hook removed: $ev scripts/$sc ($SETTINGS)" && changed=1
     fi
@@ -283,15 +294,25 @@ sync() {
       [[ "$f" == "$p" ]] && continue
       case "$st:$(where "$f")" in
         on:off)
-          if inside "$(active "$f")"; then move "$(dormant "$f")" "$(active "$f")"; else
+          if ! inside "$(dormant "$f")"; then
+            echo "warn: $(dormant "$f") resolves outside the repo; not moved" >&2
+            fail=1
+          elif ! inside "$(active "$f")"; then
             echo "warn: $(active "$f") resolves outside the repo; not moved" >&2
             fail=1
+          else
+            move "$(dormant "$f")" "$(active "$f")"
           fi
           ;;
         off:on)
-          if inside "$(dormant "$f")"; then move "$(active "$f")" "$(dormant "$f")"; else
+          if ! inside "$(active "$f")"; then
+            echo "warn: $(active "$f") resolves outside the repo; not moved" >&2
+            fail=1
+          elif ! inside "$(dormant "$f")"; then
             echo "warn: $(dormant "$f") resolves outside the repo; not moved" >&2
             fail=1
+          else
+            move "$(active "$f")" "$(dormant "$f")"
           fi
           ;;
         *:both)
@@ -307,7 +328,7 @@ sync() {
       rc=$?
       ((rc == 0)) && echo "hook added: $ev runs scripts/$sc $arg ($SETTINGS)"
     elif [[ "$st" == off ]] || ! there "scripts/$sc"; then
-      hooks remove "$sc"
+      hooks remove "$sc" "$ev" "$arg"
       rc=$?
       ((rc == 0)) && echo "hook removed: $ev scripts/$sc ($SETTINGS)"
       [[ "$rc" == 3 ]] && rc=1
@@ -353,7 +374,7 @@ status() {
     h=$(hook_of "$x")
     if [[ -n "$h" ]]; then
       read -r ev sc arg to <<<"$h"
-      hooks has "$sc"
+      hooks has "$sc" "$ev" "$arg"
       rc=$?
       if [[ "$rc" == 0 && "$st" != on && "$st" != both ]]; then
         echo "warn: $SETTINGS has a $ev hook for scripts/$sc but $x is off (run scripts/extras.sh sync)"
