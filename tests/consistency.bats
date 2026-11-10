@@ -87,6 +87,35 @@ PY
   assert_output ""
 }
 
+@test "every inline python3 runs isolated (python3 -I): a planted json.py or re.py in the working directory is never imported" {
+  run python3 -I - <<'PY'
+import re, subprocess
+files = subprocess.run(["git", "ls-files", "-co", "--exclude-standard", "--", "template/", "scripts/", ".claude/", ".github/"],
+                       capture_output=True, text=True).stdout.split()
+# python3 (or python3.N) followed by an option other than -I, by a heredoc/redirect with no "-", or
+# python3 ending a line with a backslash (its options are on the next line): flagged.
+bad = re.compile(r"(?<![A-Za-z0-9_.-])python3?(\.[0-9]+)?([ \t]+(-(?!I[ \t])|<)|[ \t]*\\$)")
+def flagged(line):
+    return not line.lstrip().startswith("#") and bad.search(line)
+# self-check: the rule must see these and only these
+for l in ("python3 -c 'x'", "python3 - \"$a\" <<'PY'", "python3 <<'PY'", "python3.11 -c 'x'", "python3 \\", "  python3 -m json.tool"):
+    assert flagged(l), l
+for l in ("python3 -I -c 'x'", "python3 -I - \"$a\" <<'PY'", "command -v python3", "python3 is required", "# python3 -c 'x'", "path_without python3"):
+    assert not flagged(l), l
+for f in files:
+    if f.endswith(".md"):
+        continue
+    try:
+        lines = open(f, encoding="utf-8").read().split("\n")
+    except (FileNotFoundError, UnicodeDecodeError, IsADirectoryError):
+        continue
+    for n, line in enumerate(lines, 1):
+        if flagged(line):
+            print(f"{f}:{n}: {line.strip()}")
+PY
+  assert_output ""
+}
+
 @test "no GNU-only alternation (\| in a basic regex) in grep or sed: BSD tools on macOS read it literally" {
   run python3 - <<'PY'
 import re, subprocess

@@ -19,7 +19,7 @@
 # Always exits 0: capture never blocks the work.
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/..}" || exit 0
 command -v python3 >/dev/null || exit 0
-MODE="${1:-stop}" python3 -c '
+MODE="${1:-stop}" python3 -I -c '
 import json, os, re, sys, datetime, subprocess
 try:
     h = json.load(sys.stdin)

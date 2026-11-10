@@ -79,7 +79,7 @@ first() { echo "$1"; }
 
 # Real location inside the repo (a symlinked directory on the way may lead out of it).
 inside() {
-  python3 -c 'import os, sys
+  python3 -I -c 'import os, sys
 r, t = os.path.realpath(sys.argv[1]), os.path.realpath(".")
 sys.exit(0 if r == t or r.startswith(t + os.sep) else 1)' "$1"
 }
@@ -88,7 +88,7 @@ sys.exit(0 if r == t or r.startswith(t + os.sep) else 1)' "$1"
 # has: 0 present, 1 absent. add: 0 added, 1 already there. remove: 0 removed, 1 none there.
 # Any: 3 settings.json missing, 4 not valid JSON or not the hooks layout, 5 its real path leaves the repo.
 hooks() {
-  python3 - "$SETTINGS" "$@" <<'PY'
+  python3 -I - "$SETTINGS" "$@" <<'PY'
 import json, os, sys, tempfile
 path, op, script = sys.argv[1:4]
 if not os.path.isfile(path):

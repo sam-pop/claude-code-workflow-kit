@@ -31,7 +31,7 @@ trap 'rm -f "$out"' EXIT
 KIT_STUCK_INNER=1 bash scripts/check.sh "$@" 2>&1 | tee "$out"
 rc=${PIPESTATUS[0]}
 
-python3 - "$state" "$rc" "$out" "$*" 2>/dev/null <<'PY' || true
+python3 -I - "$state" "$rc" "$out" "$*" 2>/dev/null <<'PY' || true
 import hashlib, os, re, sys, tempfile
 state, rc, out, args = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
 args = re.sub(r"[\t\r\n]", " ", args) or "(none)"

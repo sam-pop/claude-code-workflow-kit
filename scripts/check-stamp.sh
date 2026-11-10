@@ -34,7 +34,7 @@ stamp() { # mode [id]
     echo "check-stamp: python3 is required" >&2
     return 1
   }
-  python3 - "$@" <<'PY'
+  python3 -I - "$@" <<'PY'
 import hashlib, json, os, stat as S, subprocess, sys, tempfile, time
 
 mode = sys.argv[1]

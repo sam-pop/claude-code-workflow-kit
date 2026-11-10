@@ -79,7 +79,7 @@ if git -C "$KIT" rev-parse --git-dir >/dev/null 2>&1; then
   [[ "$n" == 0 ]] || echo "warn: the kit checkout has $n uncommitted path(s) under template/, CHANGELOG.md or scripts/kit-upgrade-prompt.md: untracked files are not installed until committed; modified tracked files are installed as they are now" >&2
 fi
 
-python3 - "$KIT" "$TPL" "$TARGET" "$MODE" "$DRY" "$FORCE" <<'PY' || exit $?
+python3 -I - "$KIT" "$TPL" "$TARGET" "$MODE" "$DRY" "$FORCE" <<'PY' || exit $?
 import datetime, hashlib, os, re, shutil, subprocess, sys
 
 kit, tpl, target, mode, dry, force = sys.argv[1:7]

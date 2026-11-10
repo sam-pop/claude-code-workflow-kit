@@ -37,6 +37,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 - `handoff.md` and `docs/glossary.md` are no longer installed. The session-start and session-end ritual, the handoff freshness warning in `doctor` and the glossary pointers are gone.
 - `scripts/set-models.sh --cross`; use `scripts/extras.sh on codex`.
 
+### Fixed
+
+- Every inline Python the kit runs (hooks, the installer, `extras.sh`, `set-models.sh`, the Codex guard) now runs as `python3 -I`, so a `json.py` or `re.py` in the working directory is no longer imported. Before, a repo holding such a file could run code from the Stop and SubagentStop hooks and the installer, and could switch off the codex-reviewer's Bash guard. `tests/consistency.bats` fails on a `python3` or `python3.N` call that lacks `-I`, takes its script from a redirect or heredoc without `-`, or puts its options on a continuation line.
+- `codex-review.sh` exports the review tree with every configured filter driver's smudge off (git-crypt, transcrypt, LFS), so Codex gets files as stored in git instead of decrypted content; an untracked file behind a filter driver is named in the report and not sent.
+- `codex-review.sh` scans every changed file from a copy without its `gitleaks:allow` markers, not only untracked files, so a `-diff` or `binary` attribute in the change can no longer hide a new marker.
+- `codex-review.sh plan <file>` refuses a path through a symlinked directory and a path when `git check-ignore` gives no clear answer, so a git-ignored file cannot be reached through a link.
+- `codex-review.sh` trusts only commits on the base branch: `high <ref>`, `release <ref>` and the plan's merge-base must be ancestors of `origin/<base>`, or of the local base when there is no remote-tracking copy, else exit 2; a tag or branch literally named `origin/<base>` is refused as ambiguous. `release` with no ref starts from the newest tag on the base branch, and plan mode refuses a local base at HEAD as high mode does.
+
 ### Upgrade notes
 
 - Nothing is lost: an upgrade keeps each extra as the repo had it. From 1.5, `stop-warning`, `verify-review`, `profiles` (with `stuck-detect.sh`) and `metrics` stay on and `codex` stays as it was. From 1.4, `profiles` and `metrics` come on and `stop-warning` and `verify-review` arrive off; switch them on with `scripts/extras.sh on <name>`. Run `scripts/extras.sh status` afterwards and record the result in `docs/decisions.md`.
@@ -54,6 +62,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 - The stop-warning stamp has a new format: expect one warning until the next `scripts/check.sh all` passes.
 - A tailored `CLAUDE.md`: the Workflow section is shorter. Move your risk-tier and ladder text to `docs/rollout.md` or take the kit's version.
 - Re-running an older kit's `--upgrade` over a 1.6 repo is not clean, but destroys nothing: active extra files show as tailored `.kit` files, dormant ones as retired, and 1.5's installer re-installs the dormant extras at their active paths as `new` (the extras then run, so run `scripts/extras.sh status` and switch off what you did not want).
+- `codex-review.sh` (codex extra): `high <ref>`, `release <ref>` and `plan` now refuse (exit 2) a trusted ref that is not on `origin/<base>`; when your base is not the default branch, set `BASE_BRANCH` in the session environment (the guard allows no `VAR=…` prefix on the command; use the `env` block of `.claude/settings.json`). Without `origin/<base>` the local base is trusted, so anything committed on it counts.
+- A changed file that holds an older `gitleaks:allow` line now refuses the run (exit 5); remove the marker or rotate the secret.
+- Codex sees LFS pointers and encrypted blobs, not checked-out content; an untracked file behind a filter driver (a new LFS asset or git-crypt file) is named in the report as filtered and not sent.
+- Plan paths through a symlinked directory are refused (exit 2).
+- With the codex extra on, the first `high` run after upgrading refuses (exit 5) until the upgraded `codex-review.sh` is on the base branch, because the script differs from the base's copy.
 
 ## [1.5] — 2026-11-09
 

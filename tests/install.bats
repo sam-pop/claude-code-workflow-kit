@@ -534,3 +534,21 @@ metrics: on"
   assert_success
   for f in "$TARGET"/scripts/*.sh; do [[ -x "$f" ]] || fail "not executable: $f"; done
 }
+
+@test "install and upgrade never import a target's json.py or re.py" {
+  mk_target
+  for m in json re; do
+    printf 'import os\nopen(os.environ["BATS_TEST_TMPDIR"] + "/pwned", "w").close()\n' >"$TARGET/$m.py"
+  done
+  (cd "$TARGET" && "$KIT/scripts/install.sh" .)
+  [[ ! -e "$BATS_TEST_TMPDIR/pwned" ]]
+  git -C "$TARGET" add -A && git -C "$TARGET" commit -qm "install kit"
+  (cd "$TARGET" && bash scripts/extras.sh on verify-review >/dev/null)
+  git -C "$TARGET" add -A && git -C "$TARGET" commit -qm "extras on"
+  rm -f "$BATS_TEST_TMPDIR/pwned"
+  mk_kit2
+  echo "# newer" >>"$KIT2/template/scripts/doctor.sh"
+  commit_kit2
+  (cd "$TARGET" && "$KIT2/scripts/install.sh" --upgrade .)
+  [[ ! -e "$BATS_TEST_TMPDIR/pwned" ]]
+}
