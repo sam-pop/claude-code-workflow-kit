@@ -300,3 +300,12 @@ workflows() { git ls-files -co --exclude-standard -- '.github/workflows/*.yml' '
   grep -q 'package-ecosystem: github-actions' .github/dependabot.yml
   grep -q 'package-ecosystem: npm' .github/dependabot.yml
 }
+
+@test "template settings.json denies git push and neither asks nor allows it (audit L3)" {
+  run python3 -I -c 'import json
+p = json.load(open("template/.claude/settings.json"))["permissions"]
+r = "Bash(git push:*)"
+assert r in p.get("deny", []), "not denied"
+assert r not in p.get("ask", []) and r not in p.get("allow", []), "also asked or allowed"'
+  assert_success
+}

@@ -3,16 +3,21 @@
 # file and the scanned directory's .gitleaksignore to $STUB_LOG/gitleaks.log. Exits 1 when a file
 # under <path> has a line holding FAKE-SECRET- without gitleaks:allow, else 0. With
 # --ignore-gitleaks-allow in argv, as the real flag does, markers are ignored: every FAKE-SECRET- line counts.
-# A missing <path> or --config file exits 1, as the real gitleaks does.
+# A missing <path> or --config file exits 1, as the real gitleaks does. A line holding a GitHub-token-shaped
+# string (ghp_ and 36 alphanumerics, the shape of codex-review.sh's canary) is a finding too, and with
+# --report-path <file> the report is a JSON list of {"File": <path relative to <path>>}, as the real one.
+#   STUB_GITLEAKS_BLIND=1   report no ghp_ finding (a scan that does not work)
 log="${STUB_LOG:-/tmp}/gitleaks.log"
 src=""
 cfg=""
 prev=""
 ign=0
+rep=""
 for a in "$@"; do
   [[ "$a" == --ignore-gitleaks-allow ]] && ign=1
   [[ "$prev" == dir ]] && src=$a
   [[ "$prev" == --config ]] && cfg=$a
+  [[ "$prev" == --report-path ]] && rep=$a
   prev=$a
 done
 {
@@ -33,6 +38,17 @@ done
   echo "stub gitleaks: no such config $cfg" >&2
   exit 1
 }
+if [[ -z "${STUB_GITLEAKS_BLIND:-}" ]]; then
+  hits=$(cd "$src" && grep -rlE 'ghp_[A-Za-z0-9]{36}' . 2>/dev/null | sed 's#^\./##')
+  if [[ -n "$hits" ]]; then
+    if [[ -n "$rep" ]]; then
+      { printf '['; printf '%s\n' "$hits" | sed 's#.*#{"File": "&"}#' | paste -sd, -; printf ']\n'; } >"$rep"
+    fi
+    echo "stub gitleaks: token found" >&2
+    exit 1
+  fi
+fi
+[[ -z "$rep" ]] || echo '[]' >"$rep"
 if [[ $ign == 1 ]] && grep -rq 'FAKE-SECRET-' "$src" 2>/dev/null; then
   echo "stub gitleaks: leak found (markers ignored)" >&2
   exit 1
