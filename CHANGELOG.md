@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 
 ## [1.7] — unreleased
 
+### Added
+
+- Three-way upgrade merge. `scripts/install.sh --upgrade` writes `<file>.kit-base` beside each tailored file's `.kit`: the kit's copy at the commit the repo was installed from (`commit=` in `.claude/kit-version`), read from the kit checkout's git history. The merge session runs `git merge-file -L yours -L base -L kit <file> <file>.kit-base <file>.kit` and resolves only the hunks where both sides changed the same lines. A base is written only when its sha256 matches the manifest's hash for that file (a repo with no manifest gets one only with `--base`, taken unchecked); otherwise (no commit recorded, a commit the kit checkout does not have, a hash mismatch, an unfinished merge) the file is merged two-way and `kit-upgrade.md` says why. A `--force` run over an unfinished merge keeps the existing `.kit-base` and writes none. `check.sh doctor` counts `*.kit-base` files with the `*.kit` ones.
+- `scripts/install.sh --upgrade --base <commit>` for a repo with no usable `commit=` (installed before 1.4): the kit commit it was installed from, 7 to 40 hex digits. A commit the kit checkout does not have exits 1 before anything is written; without `--upgrade` or with a malformed value it exits 2. The installer never guesses a base.
+
+### Security
+
+- `scripts/install.sh` no longer copies text from the target's `.claude/kit-manifest` and `.claude/kit-version` into `kit-upgrade.md` or its output unchecked: a `retired` path is listed only if it is made of letters, digits and `._/@+-` (the rest are counted in one line), and `version=` and `upgraded_from=` must be digits and dots, else `unknown`. `commit=` must be 7 to 40 hex digits before it reaches git, so a value such as `--output=/x` is not read as an option.
+
 ### Fixed
 
 - `scripts/extras.sh` owns a hook only when its command is exactly the one the kit writes (`"${CLAUDE_PROJECT_DIR}/scripts/check-stamp.sh" hook`), under the event the kit writes it to. Before, any hook whose command merely mentioned `scripts/check-stamp.sh` counted as the kit's: `off stop-warning` deleted it, and `on stop-warning` skipped adding the kit's own.
@@ -16,6 +25,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 
 ### Upgrade notes
 
+- Repos installed before 1.4 (no manifest, no `commit=`): pass `--base <kit commit you installed from>` to `--upgrade` to get `.kit-base` files; without it those files are merged two-way as before.
+- The merge session now finds `*.kit-base` files too (`git ls-files -co --exclude-standard '*.kit' '*.kit-base'`) and deletes them with the `.kit`; an unfinished merge with a leftover `.kit-base` blocks the next `--upgrade` without `--force`, like a `.kit`.
 - Codex review: the secret scan now proves it works by finding a canary GitHub token first, so a base `.gitleaks.toml` with only custom rules (no `useDefault`, no GitHub-token rule) refuses every run (exit 5); add `[extend] useDefault = true` or a GitHub-token rule.
 - A Stop hook whose command you edited by hand is no longer treated as the kit's: `extras.sh status` warns and `on stop-warning` adds the kit's own.
 - A `.gitleaksignore` or `^`-anchored allowlist in the base branch's gitleaks config now applies to the Codex review; a fingerprint written for an absolute path under the temporary directory no longer matches. Fingerprints are `path:rule:line` with `path` relative to the repo root.

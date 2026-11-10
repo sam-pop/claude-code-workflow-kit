@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs or upgrades the kit without overwriting tailored files.
-# Usage: scripts/install.sh [--upgrade [--force]] [--dry-run] /path/to/repo
+# Usage: scripts/install.sh [--upgrade [--force] [--base <commit>]] [--dry-run] /path/to/repo
 #   (none)      fresh install: copy what is missing; a file that already differs is kept and the
 #               kit's copy is saved beside it as <file>.kit
 #   --upgrade   re-run on a repo that has the kit: classify every kit file (replaced, current,
@@ -11,7 +11,15 @@
 # Reads CHANGELOG.md and scripts/kit-upgrade-prompt.md; never writes to the kit.
 #   --force     upgrade even though a previous merge is unfinished (.claude/kit-upgrade.md or a .kit
 #               file is still there); files with a .kit sibling stay tailored
+#   --base <commit>   upgrade only: the kit commit the repo was installed from (7 to 40 hex digits),
+#               for a repo whose .claude/kit-version has no usable commit= (installed before 1.4)
 #   --dry-run   print the classification and write nothing
+# Three-way merge: for each tailored file the installer also writes <file>.kit-base, the kit's copy
+# at the commit the repo was installed from (commit= in .claude/kit-version, or --base), read from
+# the kit's git history. It is written only when its sha256 equals the manifest's hash for that file
+# (so a kit that was dirty at install time never gives a wrong base), and never on a --force run over
+# an unfinished merge. With no manifest a base is written only with --base, unchecked: that commit
+# must be the one the repo was installed from. Without a base the merge session merges two-way, and kit-upgrade.md says why.
 # State in the target: .claude/kit-version and .claude/kit-manifest (sha256 of each kit file as
 # installed). An unmodified file is replaced in place on upgrade; a modified one gets a .kit sibling.
 # Extras: a file under template/.claude/optional/ is an extra's, off there; on, it lives at its active
@@ -30,11 +38,24 @@ MODE=install
 DRY=0
 FORCE=0
 TARGET=""
-for a in "$@"; do
+BASE=""
+HAVE_BASE=0
+while [[ $# -gt 0 ]]; do
+  a="$1"
+  shift
   case "$a" in
     --upgrade) MODE=upgrade ;;
     --dry-run) DRY=1 ;;
     --force) FORCE=1 ;;
+    --base)
+      [[ $# -gt 0 ]] || {
+        echo "--base needs a kit commit (7 to 40 hex digits)"
+        exit 2
+      }
+      BASE="$1"
+      HAVE_BASE=1
+      shift
+      ;;
     -*)
       echo "unknown option: $a"
       sed -n '2,3p' "$0"
@@ -50,9 +71,19 @@ for a in "$@"; do
   esac
 done
 [[ -n "$TARGET" ]] || {
-  echo "usage: install.sh [--upgrade [--force]] [--dry-run] /path/to/repo"
+  echo "usage: install.sh [--upgrade [--force] [--base <commit>]] [--dry-run] /path/to/repo"
   exit 2
 }
+if [[ "$HAVE_BASE" == 1 ]]; then
+  [[ "$MODE" == upgrade ]] || {
+    echo "--base is valid only with --upgrade"
+    exit 2
+  }
+  [[ "$BASE" =~ ^[0-9a-f]{7,40}$ ]] || {
+    echo "--base needs a kit commit: 7 to 40 lowercase hex digits"
+    exit 2
+  }
+fi
 [[ -d "$TARGET" ]] || {
   echo "not a directory: $TARGET"
   exit 1
@@ -79,10 +110,10 @@ if git -C "$KIT" rev-parse --git-dir >/dev/null 2>&1; then
   [[ "$n" == 0 ]] || echo "warn: the kit checkout has $n uncommitted path(s) under template/, CHANGELOG.md or scripts/kit-upgrade-prompt.md: untracked files are not installed until committed; modified tracked files are installed as they are now" >&2
 fi
 
-python3 -I - "$KIT" "$TPL" "$TARGET" "$MODE" "$DRY" "$FORCE" <<'PY' || exit $?
+python3 -I - "$KIT" "$TPL" "$TARGET" "$MODE" "$DRY" "$FORCE" "$BASE" <<'PY' || exit $?
 import datetime, hashlib, os, re, shutil, subprocess, sys
 
-kit, tpl, target, mode, dry, force = sys.argv[1:7]
+kit, tpl, target, mode, dry, force, base_arg = sys.argv[1:8]
 upgrade, dry, force = mode == "upgrade", dry == "1", force == "1"
 today = datetime.date.today().isoformat()
 
@@ -155,7 +186,12 @@ if os.path.isfile(version_path):
         if "=" in tok:
             k, v = tok.split("=", 1)
             old_info[k] = v
-from_version = old_info.get("version", "unknown")
+
+def clean_version(v):
+    """A version read from the target is untrusted: digits and dots only, else unknown."""
+    return v if re.fullmatch(r"\d+(\.\d+)*", v) else "unknown"
+
+from_version = clean_version(old_info.get("version", "unknown"))
 
 files = kit_files()
 kit_hash = {rel: sha(os.path.join(tpl, rel)) for rel in files}
@@ -180,7 +216,8 @@ def prev_hash(rel, dst):
 
 # A previous merge is unfinished while .claude/kit-upgrade.md or a kit file's .kit sibling exists.
 upgrade_md = os.path.join(target, ".claude", "kit-upgrade.md")
-pending = [dst_of(r) + ".kit" for r in files if os.path.exists(os.path.join(target, dst_of(r) + ".kit"))]
+pending = [dst_of(r) + sfx for r in files for sfx in (".kit", ".kit-base")
+           if os.path.exists(os.path.join(target, dst_of(r) + sfx))]
 if os.path.isfile(upgrade_md):
     pending.insert(0, ".claude/kit-upgrade.md")
 if upgrade and pending:
@@ -190,7 +227,55 @@ if upgrade and pending:
         print("finish it (open Claude Code and say: Read .claude/kit-upgrade.md), or re-run with --force")
         sys.exit(1)
     if "upgraded_from" in old_info:  # the unfinished merge started from there
-        from_version = old_info["upgraded_from"]
+        from_version = clean_version(old_info["upgraded_from"])
+continuing = bool(upgrade and pending and force)  # a --force run over an unfinished merge
+
+# The base of the three-way merge: the kit commit the repo was installed from. Both the --base value
+# and commit= in .kit-version are checked as hex before git sees them (a value such as
+# --output=/x would otherwise be read as an option); commit= comes from the target, so it is untrusted.
+HEXC = re.compile(r"[0-9a-f]{7,40}")
+def git_out(*args):
+    try:
+        return subprocess.run(["git", "-C", kit] + list(args), capture_output=True)
+    except OSError:
+        return None
+
+base_sha, base_prefix, base_why = None, "", "no kit commit recorded"
+if upgrade:
+    cand = base_arg if base_arg else old_info.get("commit", "")
+    if cand and HEXC.fullmatch(cand):
+        r = git_out("rev-parse", "--verify", "--quiet", cand + "^{commit}")
+        full = r.stdout.decode("utf-8", "replace").strip() if r is not None and r.returncode == 0 else ""
+        if re.fullmatch(r"[0-9a-f]{40,64}", full):
+            base_sha = full
+            r = git_out("cat-file", "-e", base_sha + ":template")
+            base_prefix = "template/" if r is not None and r.returncode == 0 else ""  # kits before 1.5
+        elif base_arg:
+            print(f"--base {base_arg}: not a commit in this kit checkout (a shallow clone, or not a git checkout?)")
+            sys.exit(1)
+        else:
+            base_why = "commit not in this kit checkout"
+
+def kit_base_copy(rel, dst):
+    """The kit's copy of this file at the install commit as bytes, or (None, reason). With a manifest
+    hash for the file the copy must match it; without a manifest, only with --base (the commit the
+    user names), the first candidate that exists, unchecked."""
+    if base_sha is None:
+        return None, base_why
+    want = prev_hash(rel, dst)
+    if old and want is None:
+        return None, "base copy does not match the manifest"
+    if not old and not base_arg:
+        return None, "no manifest; pass --base <kit commit you installed from>"
+    found = False
+    for cand in [rel] + ([active_path(rel)] if active_path(rel) else []):
+        r = git_out("cat-file", "blob", base_sha + ":" + base_prefix + cand)
+        if r is None or r.returncode != 0:
+            continue
+        found = True
+        if want is None or hashlib.sha256(r.stdout).hexdigest() == want:
+            return r.stdout, ""
+    return None, "base copy does not match the manifest" if (found or old) else "file not in the base commit"
 
 def classify(rel):
     """Return (class, path of the target file, relative)."""
@@ -222,11 +307,12 @@ NOTE = {
 ORDER = ["replaced", "current", "tailored", "tailored (kit unchanged)", "new", "skipped",
          "never re-added", "retired"]
 groups = {c: [] for c in ORDER}
+base_note = {}  # tailored file -> "" when its .kit-base is there, else why there is none
 
 # Every path this run could write (each file, its .kit sibling, the state files) must resolve inside
 # the target: a symlinked directory or a symlink, dangling or not, that leads out of it refuses the run.
 outside = []
-for p in [d for rel in files for d in (dst_of(rel), dst_of(rel) + ".kit")] \
+for p in [d for rel in files for d in (dst_of(rel), dst_of(rel) + ".kit", dst_of(rel) + ".kit-base")] \
         + [".claude/kit-manifest", ".claude/kit-version", ".claude/kit-upgrade.md"]:
     real = os.path.realpath(os.path.join(target, p))
     if real != target and not real.startswith(target + os.sep):
@@ -235,6 +321,8 @@ if outside:
     print("refusing: these paths resolve outside the target (a symlink on the way?): "
           + ", ".join(outside[:5]) + (" …" if len(outside) > 5 else ""))
     sys.exit(1)
+
+SAFE_PATH = re.compile(r"[A-Za-z0-9._/@+-]+")
 
 def exec_bits(rel, src, out):  # on a file this run wrote: executable if the kit's copy is, or a .sh
     if os.stat(src).st_mode & 0o111 or rel.endswith(".sh"):  # (a kit copy that lost its modes)
@@ -248,10 +336,14 @@ for rel in files:
     groups[cls].append(dst)
     note = NOTE.get(cls, "").format(dst=dst)
     src, out = os.path.join(tpl, rel), os.path.join(target, dst)
-    if upgrade and cls == "current" and os.path.exists(out + ".kit"):  # left over from --force
-        note = f"(stale {dst}.kit {'would be ' if dry else ''}deleted: the file now matches the kit)"
+    stale = [dst + sfx for sfx in (".kit", ".kit-base") if os.path.exists(out + sfx)]
+    if upgrade and cls == "current" and stale:  # left over from --force
+        note = (f"(stale {stale[0]} {'would be ' if dry else ''}deleted: the file now matches the kit"
+                + (f"; {stale[1]} too)" if len(stale) > 1 else ")"))
         if not dry:
-            os.remove(out + ".kit")
+            for sfx in (".kit", ".kit-base"):
+                if os.path.exists(out + sfx):
+                    os.remove(out + sfx)
     print(f"{cls + ':':<26}{dst}{'   ' + note if note else ''}")
     if dry:
         continue
@@ -265,11 +357,27 @@ for rel in files:
         exec_bits(rel, src, out)
     elif cls == "tailored":
         shutil.copyfile(src, out + ".kit")
+        if not upgrade:
+            continue
+        if continuing:  # the manifest and commit= already describe the new kit: a base from them would equal .kit
+            base_note[dst] = "" if os.path.exists(out + ".kit-base") else "unfinished merge"
+            continue
+        blob, why = kit_base_copy(rel, dst)
+        if blob is None:
+            base_note[dst] = why
+        else:
+            with open(out + ".kit-base", "wb") as g:
+                g.write(blob)
+            base_note[dst] = ""
 if upgrade:
     for rel in sorted(set(old) - set(files) - {dst_of(r) for r in files}
                       - {active_path(r) for r in files}):
         groups["retired"].append(rel)
-        print(f"{'retired:':<26}{rel}   {NOTE['retired']}")
+        if SAFE_PATH.fullmatch(rel):  # a manifest line comes from the target: never print it raw
+            print(f"{'retired:':<26}{rel}   {NOTE['retired']}")
+    hidden = sum(1 for r in groups["retired"] if not SAFE_PATH.fullmatch(r))
+    if hidden:
+        print(f"{'retired:':<26}{hidden} manifest entries with unexpected characters not shown")
 
 print()
 print("  ".join(f"{c} {len(groups[c])}" for c in ORDER if upgrade or c in ("current", "tailored", "new")))
@@ -306,7 +414,19 @@ if upgrade:
              "retired": "retired: no longer in the kit; delete by hand if unused"}
     for c in ORDER:
         lines += [f"## {heads[c]}", ""]
-        lines += [f"- `{p}`" + (f" (`{p}.kit`)" if c == "tailored" else "") for p in groups[c]] or ["(none)"]
+        if c == "tailored":
+            for p in groups[c]:
+                why = base_note.get(p, "unfinished merge")
+                lines.append(f"- `{p}` (`{p}.kit`, " + (f"no base: {why})" if why else f"base `{p}.kit-base`)"))
+            if not groups[c]:
+                lines.append("(none)")
+        elif c == "retired":
+            shown = [p for p in groups[c] if SAFE_PATH.fullmatch(p)]
+            lines += [f"- `{p}`" for p in shown] or ([] if len(shown) < len(groups[c]) else ["(none)"])
+            if len(shown) < len(groups[c]):
+                lines.append(f"- {len(groups[c]) - len(shown)} manifest entries with unexpected characters not shown")
+        else:
+            lines += [f"- `{p}`" for p in groups[c]] or ["(none)"]
         lines.append("")
     lines += [f"## Changes since {from_version}" if from_version != "unknown"
               else "## Changes (previous version unknown, all shown)", ""]
