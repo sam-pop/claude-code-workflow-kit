@@ -942,6 +942,15 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three"
 }
 
+@test "plan: a relative TMPDIR works: the plan is scanned and sent" {
+  mkdir -p "$BATS_TEST_TMPDIR/rel"
+  echo "# plan" >plan.md
+  TMPDIR=../rel run scripts/codex-review.sh plan plan.md
+  assert_success
+  assert_equal "$(codex_calls)" 1
+  grep -q "argv: dir /" "$STUB_LOG/gitleaks.log"
+}
+
 @test "real gitleaks, plan: a relative TMPDIR works: the plan is scanned and sent" {
   with_tools
   rm -f "$BATS_TEST_TMPDIR/stubs/gitleaks"

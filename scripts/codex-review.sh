@@ -271,7 +271,7 @@ sys.exit(0 if r.startswith(t + os.sep) else 1)' "$file"; then
     return 4
   fi
   t="$(mktemp -d)" || return 1
-  t="$(cd "$t" && pwd -P)" || return 1 # absolute: a relative TMPDIR would break the cd steps
+  t="$(cd -P -- "$t" >/dev/null && pwd -P)" || return 1 # absolute: a relative TMPDIR would break the cd steps
   # shellcheck disable=SC2064  # expand $t now: it is local
   trap "rm -rf '$t'" EXIT
   mkdir -p "$t/wt" "$t/scan" "$t/glcwd"
@@ -371,7 +371,7 @@ refuse_tooling
 tmp="$(mktemp -d)" || exit 1
 cleanup() { rm -rf "$tmp"; }
 trap cleanup EXIT
-tmp="$(cd "$tmp" && pwd -P)" || exit 1 # absolute: a relative TMPDIR would break the cd steps
+tmp="$(cd -P -- "$tmp" >/dev/null && pwd -P)" || exit 1 # absolute: a relative TMPDIR would break the cd steps
 
 : >"$tmp/untracked.z"
 if [[ "$MODE" == high ]]; then
