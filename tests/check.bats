@@ -139,3 +139,64 @@ root_check_repo() {
   run "$R/scripts/check.sh" security
   refute_output --partial SHADOW
 }
+
+@test "root check.sh: markdownlint never loads code from the tree, in lint, lint --changed and the lint hook" {
+  with_tools
+  require_real lychee
+  require_real shellcheck
+  require_real shfmt
+  mjs="$REPO_ROOT/node_modules/markdownlint-cli2/markdownlint-cli2.mjs"
+  if [[ ! -f "$mjs" ]]; then
+    [[ "${KIT_REQUIRE_REAL_TOOLS:-}" == 1 ]] && fail "markdownlint-cli2 is required (KIT_REQUIRE_REAL_TOOLS=1) but not installed"
+    skip "markdownlint-cli2 not installed"
+  fi
+  root_check_repo
+  cp "$REPO_ROOT/scripts/lint-hook.sh" "$R/scripts/"
+  cp "$REPO_ROOT/.markdownlint-cli2.jsonc" "$REPO_ROOT/.editorconfig" "$R/"
+  printf '/node_modules\n' >"$R/.gitignore"
+  ln -s "$REPO_ROOT/node_modules" "$R/node_modules"
+  mkdir -p "$R/docs/guide" "$R/docs/y"
+  # Three ways a config in the tree can make the linter run code; each writes a marker when loaded.
+  printf 'require("fs").writeFileSync("%s/ran-cli2-cjs", "x");\nmodule.exports = {};\n' "$BATS_TEST_TMPDIR" >"$R/docs/guide/.markdownlint-cli2.cjs"
+  printf 'require("fs").writeFileSync("%s/ran-root-cjs", "x");\nmodule.exports = {};\n' "$BATS_TEST_TMPDIR" >"$R/.markdownlint.cjs"
+  printf 'require("fs").writeFileSync("%s/ran-rule-cjs", "x");\nmodule.exports = { names: ["custom-x"], description: "x", tags: ["custom-t"], function: function () {} };\n' "$BATS_TEST_TMPDIR" >"$R/docs/y/rule.cjs"
+  printf '{ "customRules": ["./rule.cjs"] }\n' >"$R/docs/y/.markdownlint-cli2.jsonc"
+  printf '# T\n\n\nbad\n' >"$R/docs/guide/bad.md" # two blank lines: MD012
+  printf '# Y\n\nok\n' >"$R/docs/y/ok.md"
+  printf '# R\n\nok\n' >"$R/ok.md"
+  git -C "$R" add -A
+
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "MD012"
+  run "$R/scripts/check.sh" lint --changed
+  assert_failure 1
+  assert_output --partial "MD012"
+  run env CLAUDE_PROJECT_DIR="$R" "$R/scripts/lint-hook.sh"
+  assert_failure 2
+  assert_output --partial "MD012"
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-cli2-cjs" ]]
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-root-cjs" ]]
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-rule-cjs" ]]
+}
+
+@test "root check.sh: tracked .tools/ or node_modules/ fails before any tool runs" {
+  root_check_repo
+  mkdir -p "$R/.tools/bin" "$R/node_modules/.bin"
+  printf '#!/usr/bin/env bash\necho x >"%s/ran-tracked-tool"\n' "$BATS_TEST_TMPDIR" >"$R/.tools/bin/shellcheck"
+  chmod +x "$R/.tools/bin/shellcheck"
+  printf '#!/usr/bin/env bash\necho a\n' >"$R/scripts/a.sh"
+  git -C "$R" add scripts/a.sh
+  git -C "$R" add -f .tools/bin/shellcheck
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-tracked-tool" ]]
+  # the same guard for node_modules/
+  git -C "$R" rm -q --cached -r .tools
+  printf 'x\n' >"$R/node_modules/.bin/bats"
+  git -C "$R" add -f node_modules/.bin/bats
+  run "$R/scripts/check.sh" test
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+}

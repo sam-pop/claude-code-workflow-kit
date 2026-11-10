@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Stub of gitleaks for tests: `gitleaks dir <path> [--config <file>] ...`. Logs argv, the --config
 # file and the scanned directory's .gitleaksignore to $STUB_LOG/gitleaks.log. Exits 1 when a file
-# under <path> has a line holding FAKE-SECRET- without gitleaks:allow, else 0.
+# under <path> has a line holding FAKE-SECRET- without gitleaks:allow, else 0. With
+# --ignore-gitleaks-allow in argv, as the real flag does, markers are ignored: every FAKE-SECRET- line counts.
 log="${STUB_LOG:-/tmp}/gitleaks.log"
 src=""
 cfg=""
 prev=""
+ign=0
 for a in "$@"; do
+  [[ "$a" == --ignore-gitleaks-allow ]] && ign=1
   [[ "$prev" == dir ]] && src=$a
   [[ "$prev" == --config ]] && cfg=$a
   prev=$a
@@ -20,6 +23,10 @@ done
   [[ -f "$src/.gitleaks.toml" ]] && echo "srcconfig: present"
 } >>"$log"
 [[ -n "$src" ]] || exit 0
+if [[ $ign == 1 ]] && grep -rq 'FAKE-SECRET-' "$src" 2>/dev/null; then
+  echo "stub gitleaks: leak found (markers ignored)" >&2
+  exit 1
+fi
 if grep -r 'FAKE-SECRET-' "$src" 2>/dev/null | grep -qv 'gitleaks:allow'; then
   echo "stub gitleaks: leak found" >&2
   exit 1

@@ -187,7 +187,7 @@ listing() { cat "$STUB_LOG/codex.${1:-1}.ls"; }
   refute_output --partial "later"
 }
 
-@test "real gitleaks: a removed token, a token marked gitleaks:allow, and an allow-all config under review all refuse" {
+@test "real gitleaks: a removed token, a token marked gitleaks:allow (also nested), and an allow-all config under review all refuse" {
   with_tools
   rm -f "$BATS_TEST_TMPDIR/stubs/gitleaks"
   require_real gitleaks
@@ -206,6 +206,11 @@ listing() { cat "$STUB_LOG/codex.${1:-1}.ls"; }
   run scripts/codex-review.sh high
   assert_failure 5
   rm src/allowed.txt
+
+  echo "token=$(fake_token) # gitleaks:gitleaks:allowallow" >src/nested.txt
+  run scripts/codex-review.sh high
+  assert_failure 5
+  rm src/nested.txt
 
   printf '[allowlist]\npaths = [".*"]\n' >.gitleaks.toml
   echo "token=$(fake_token)" >src/new.txt
@@ -865,12 +870,12 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   assert_output --partial "secrets/new.txt (filtered, not sent)"
 }
 
-@test "a failing sed in the secret-scan copy refuses with exit 1 and codex is not called, in high and plan mode" {
-  real_sed=$(command -v sed)
+@test "a failing cp into the secret-scan directory refuses with exit 1 and codex is not called, in high and plan mode" {
+  real_cp=$(command -v cp)
   mkdir -p "$BATS_TEST_TMPDIR/shim"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do [[ "$a" == s/gitleaks:allow//g ]] && exit 1; done\nexec "%s" "$@"\n' "$real_sed" >"$BATS_TEST_TMPDIR/shim/sed"
-  chmod +x "$BATS_TEST_TMPDIR/shim/sed"
-  # A deletion only: no changed file is copied for the scan, so only the prompt's scan copy runs sed.
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do last=$a; done\n[[ "$last" == */scan/* ]] && exit 1\nexec "%s" "$@"\n' "$real_cp" >"$BATS_TEST_TMPDIR/shim/cp"
+  chmod +x "$BATS_TEST_TMPDIR/shim/cp"
+  # A deletion only: no changed file is copied for the scan, so only the prompt's scan copy runs cp.
   git rm -q src/app.txt
   PATH="$BATS_TEST_TMPDIR/shim:$PATH" run scripts/codex-review.sh high
   assert_failure 1
@@ -879,5 +884,62 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   PATH="$BATS_TEST_TMPDIR/shim:$PATH" run scripts/codex-review.sh plan plan.md
   assert_failure 1
   assert_output --partial "cannot prepare the secret scan"
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "the working-tree patch is applied outside any repository: a tracked bare-repo scaffold runs no filter, and text, mode and binary edits still arrive" {
+  # A tracked config, HEAD, objects/, refs/ and info/attributes in the root make the exported tree look
+  # like a bare repository; git apply run inside it would read that config and run its filter.
+  printf '[core]\n\trepositoryformatversion = 0\n\tbare = true\n[filter "x"]\n\tclean = "sh -c '\''echo ran >> %s/pwned; cat'\''"\n\tsmudge = "sh -c '\''echo ran >> %s/pwned; cat'\''"\n' \
+    "$BATS_TEST_TMPDIR" "$BATS_TEST_TMPDIR" >config
+  printf 'ref: refs/heads/main\n' >HEAD
+  mkdir -p objects refs info
+  : >objects/.keep
+  : >refs/.keep
+  printf '* filter=x\n' >info/attributes
+  printf '#!/bin/sh\necho hi\n' >run.sh
+  printf 'a\0b\0c' >blob.bin
+  git add -A && git commit -qm "scaffold"
+  publish
+  echo "three" >>src/app.txt
+  chmod +x run.sh
+  printf 'z\0y\0x\0w' >blob.bin
+  STUB_CODEX_TREE=1 run scripts/codex-review.sh high
+  assert_success
+  [[ ! -e "$BATS_TEST_TMPDIR/pwned" ]]
+  tree="$STUB_LOG/codex.1.tree"
+  assert_equal "$(tail -n 1 "$tree/src/app.txt")" "three"
+  [[ -x "$tree/run.sh" ]]
+  cmp "$tree/blob.bin" blob.bin
+}
+
+@test "a nested gitleaks:gitleaks:allowallow does not exempt a changed, an untracked or a plan file" {
+  nested="token FAKE-SECRET-abc gitleaks:gitleaks:allowallow"
+  echo "$nested" >>src/app.txt
+  run scripts/codex-review.sh high
+  assert_failure 5
+  git checkout -q -- src/app.txt
+  echo "$nested" >src/new.cfg
+  run scripts/codex-review.sh high
+  assert_failure 5
+  rm src/new.cfg
+  echo "$nested" >plan.md
+  run scripts/codex-review.sh plan plan.md
+  assert_failure 5
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "real gitleaks: a token in an untracked package-lock.json, *.svg, go.sum or node_modules/ file refuses" {
+  with_tools
+  rm -f "$BATS_TEST_TMPDIR/stubs/gitleaks"
+  require_real gitleaks
+  # gitleaks' default allowlist skips these paths; a copy under a neutral name is scanned too.
+  for f in package-lock.json logo.svg go.sum node_modules/pkg/index.js; do
+    mkdir -p "$(dirname "$f")"
+    echo "token=$(fake_token)" >"$f"
+    run scripts/codex-review.sh high
+    assert_failure 5
+    rm -rf "$f" node_modules
+  done
   assert_equal "$(codex_calls)" 0
 }
