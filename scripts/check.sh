@@ -52,7 +52,8 @@ MDLINT_JS="$PWD/node_modules/markdownlint-cli2/markdownlint-cli2.mjs"
 # off and keeps the JSON/YAML rules (the root .markdownlint-cli2.jsonc); the CLI has no flag. The same
 # config can also write: "fix": true rewrites every linted file, and "globs" adds files, absolute paths
 # outside the repo included, to that set. optionsOverride {fix: false} beats any config file, and
-# noGlobs ignores the "globs" setting, so only the files named on the command line are read, never
+# noGlobs ignores the "globs" setting, and each file is passed as ":./<path>" (markdownlint-cli2's
+# literal-path form; a plain argument is a glob pattern), so only the files named are read, never
 # written. A node error is a lint failure, never a pass. Not handled: `extends` resolves a path and
 # reads it as data, so a config can name any readable file and a parse error can echo its lines into
 # the lint output.
@@ -103,7 +104,7 @@ lint_files() { # reads paths on stdin
   local rc=0 list sh=() md=() mdl=() wf=() f
   list=$(cat)
   while IFS= read -r f; do [[ -n "$f" ]] && sh+=("./$f"); done < <(shell_files <<<"$list")
-  while IFS= read -r f; do [[ -n "$f" ]] && md+=("./$f"); done < <(md_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && md+=(":./$f"); done < <(md_files <<<"$list")
   while IFS= read -r f; do [[ -n "$f" ]] && mdl+=("./$f"); done < <(md_files <<<"$list") # the same set: saved reports are left out
   while IFS= read -r f; do [[ -n "$f" ]] && wf+=("./$f"); done < <(workflow_files <<<"$list")
   if ((${#sh[@]})); then

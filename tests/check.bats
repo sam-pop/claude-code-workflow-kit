@@ -140,6 +140,29 @@ root_check_repo() {
   refute_output --partial SHADOW
 }
 
+@test "root check.sh: a tracked file name is linted as itself, never read as a markdownlint glob" {
+  with_tools
+  require_real lychee
+  require_real shellcheck
+  require_real shfmt
+  mjs="$REPO_ROOT/node_modules/markdownlint-cli2/markdownlint-cli2.mjs"
+  if [[ ! -f "$mjs" ]]; then
+    [[ "${KIT_REQUIRE_REAL_TOOLS:-}" == 1 ]] && fail "markdownlint-cli2 is required (KIT_REQUIRE_REAL_TOOLS=1) but not installed"
+    skip "markdownlint-cli2 not installed"
+  fi
+  root_check_repo
+  cp "$REPO_ROOT/.markdownlint-cli2.jsonc" "$REPO_ROOT/.editorconfig" "$R/"
+  printf '/node_modules\n' >"$R/.gitignore"
+  ln -s "$REPO_ROOT/node_modules" "$R/node_modules"
+  # Read as a glob, docs/{a,b}.md names two files that do not exist, and the real file goes unlinted.
+  mkdir -p "$R/docs"
+  printf '# N\n\n\nbad\n' >"$R/docs/{a,b}.md"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "MD012"
+}
+
 @test "root check.sh: markdownlint never loads code from the tree, in lint, lint --changed and the lint hook" {
   with_tools
   require_real lychee
