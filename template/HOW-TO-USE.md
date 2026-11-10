@@ -30,7 +30,7 @@ Optional companion skills: install per [that repo's README](https://github.com/m
 
    Nothing is overwritten. Where a file already existed, the kit's version lands beside it as `*.kit` to merge by hand. The install also writes `.claude/kit-version` and `.claude/kit-manifest` (commit both); they are what lets `--upgrade` later tell an untouched file from a tailored one.
 
-   **Review-only** (other people commit to the repo): install into a separate review workspace instead, never into their repo. Hooks run shell commands on your machine, and a PR could change them. `TAILOR.md` sets this up.
+   **Review-only** (other people commit to the repo): install into a separate review workspace instead, never into their repo. Hooks run shell commands on your machine, including your linters and the config files they load, and a PR could change them. `TAILOR.md` sets this up. On a shared repo with outside contributors, review a branch's changes to `.claude/`, `scripts/` and every file your hooks, linters, formatters, tests or build execute before opening Claude Code on it.
 
 2. **Tailor.** Open Claude Code in the repo and say:
    > Read TAILOR.md and tailor the kit to this repo.
@@ -53,7 +53,7 @@ Record each choice in `docs/decisions.md`. An upgrade keeps each extra as your r
 | Extra | Adds | Cost or egress | Switch on |
 |---|---|---|---|
 | `profiles` | Model and effort per agent (lite, standard or max), risk-scaled review effort, the writer ladder, a repeated-failure counter. Needs Claude Code v2.1.292 or later. | Model spend follows the profile; `max` bills Fable credits on Pro and standard Team plans, and `claude -p` does so without asking (set a cap in `/usage-credits`) | `scripts/extras.sh on profiles`, then `scripts/set-models.sh <lite\|standard\|max>` |
-| `codex` | A Codex second opinion: on the planner's blueprint, on High-risk diffs and before a release. Never blocks. | Sends the plan text, diffs and tracked code to OpenAI; on client work get the client's OK first. Needs gitleaks and refuses when the change edits its own script. Not available on Review-only. | `scripts/extras.sh on codex` |
+| `codex` | A Codex second opinion: on the planner's blueprint, on High-risk diffs and before a release. Never blocks. | Sends the plan text, diffs and tracked code to OpenAI; on client work get the client's OK first. Needs gitleaks and refuses when the change edits its own script. Takes its trusted config only from the base branch (set `BASE_BRANCH` for another, in the session environment, e.g. the `env` block of `.claude/settings.json`); filtered files leave as stored. Not available on Review-only. | `scripts/extras.sh on codex` |
 | `stop-warning` | A one-line warning at the end of a turn naming files that changed since `check.sh all` last passed | A short git scan each turn | `scripts/extras.sh on stop-warning` |
 | `verify-review` | A `### Verification` block on each saved review | None | `scripts/extras.sh on verify-review` |
 | `metrics` | Review-log counts and the agreement rate in `check.sh doctor` | None | `scripts/extras.sh on metrics` |

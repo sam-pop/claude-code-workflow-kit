@@ -8,12 +8,15 @@
 #                     a short plan-review brief; no repository files, no diff
 #   guard             PreToolUse hook of the codex-reviewer agent: reads the hook JSON on stdin and
 #                     allows only `scripts/codex-review.sh high|release [ref]` and `plan <file>`
-# Exit codes: 0 ok (or nothing to review), 1 codex failed, 2 usage, an untrusted base, or a plan file
-#             that is missing, outside the repo or not *.md, 3 not enabled,
+# Exit codes: 0 ok (or nothing to review), 1 codex failed or a local step failed (nothing sent), 2 usage,
+#             an untrusted base (a trusted ref not on the base branch included), or a plan file that is
+#             missing, outside the repo, behind a symlinked directory or not *.md, 3 not enabled,
 #             codex not installed or gitleaks not installed, 4 diff too large, 5 refused: secrets or a
 #             sensitive file in what Codex would read (a plan that is a secrets file or git-ignored
 #             included), or the review tooling itself changed in the range.
-# Environment: BASE_BRANCH (default: origin/HEAD, else main).
+# Environment: BASE_BRANCH (default: origin/HEAD, else main). The guard allows no env prefix on the
+#              command, so set it in the session environment (for example the `env` block of
+#              .claude/settings.json).
 #
 # Pinned (Nov 2026; sources: docs/rollout.md, Extras, codex):
 #   high     gpt-6.1-sol  effort high
@@ -26,17 +29,25 @@
 # Never set CODEX_API_KEY as a job-level CI variable where repository code runs (OpenAI's warning).
 #
 # Trusted side: the base (high: origin/<base> when <base> is a branch with a remote-tracking copy,
-# else <base> as given; release: the start ref). The gitleaks config and ignore file and the reviewer
+# else <base> as given; release: the start ref; plan: the merge-base with the base branch). The
+# trust anchor is the base branch only: origin/$BASE_BRANCH, or the local $BASE_BRANCH when there is
+# no remote-tracking copy (set BASE_BRANCH when your base is not the default branch). In high, release
+# and plan mode the trusted ref must be on that branch, else exit 2: a ref from the change's own branch
+# could carry its own gitleaks config. Without origin/<base>, anything committed on the local base is
+# trusted. The gitleaks config and ignore file and the reviewer
 # checklist sent to Codex (.claude/agents/reviewer.md; the working-tree copy only when the base has
 # none, said in the report header) come from it, and the run refuses (exit 5) when this script or
 # codex-reviewer.md differ from it: the change under review could otherwise switch the scan off. A
 # change that also removes that check is still the reviewer's to catch (changes to scripts/ are High
 # risk). In high mode a local base that is HEAD or ahead of it is refused (exit 2): its config would
-# be the change's own; a remote-tracking base is accepted.
+# be the change's own (plan mode too); a remote-tracking base is accepted.
 #
 # Egress: Codex works in a fresh directory checked out from HEAD through a temporary index (plus, in
 # high mode, the uncommitted changes and untracked, non-ignored files). It has no .git, so git-ignored
-# files and history are kept out of the directory Codex works in. Symlinks are removed and listed in
+# files and history are kept out of the directory Codex works in. Files behind a filter driver
+# (git-crypt, transcrypt, LFS) leave as stored in git: every configured driver's smudge is switched
+# off for the export, so an encrypted blob stays encrypted and an LFS file stays a pointer. Symlinks
+# are removed and listed in
 # the prompt as "(symlink, not sent)" (names there are made printable, one line each); a .codex/
 # directory is removed; an AGENTS.md is noted in the
 # report header (Codex reads it as instructions). Codex's read-only sandbox limits writes, not reads,
@@ -44,20 +55,33 @@
 # OpenAI. gitleaks is required: it scans that directory and the final prompt (which holds the diff,
 # removed lines included) for known-pattern secrets, and any finding refuses the run. A tracked file
 # that should never be tracked (.env, *.pem, *.p12, id_rsa, id_ed25519) refuses the run too.
+# Every changed or untracked file is scanned with inline `gitleaks:allow` markers ignored, at its own
+# path, under a neutral number and under a number plus its file name (the last two after a newline,
+# because gitleaks skips content whose first bytes look like a known binary format), so neither a
+# new marker nor a path exemption covers it. The scan is a best-effort guard against accidents, not
+# a security boundary: it is gitleaks' pattern matching. Blind spots: unprefixed secrets; text in
+# UTF-16 or in a working-tree-encoding the export re-encodes; compressed or encrypted content (a gzip
+# or zip holding a secret); files the change leaves alone keep gitleaks' default path exemptions
+# (lockfiles, images, vendored directories), so a credential already committed there is sent; and a
+# TMPDIR whose path holds such a directory (node_modules/, vendor/) switches the scan off, because
+# gitleaks matches its path allowlist against the absolute path. Keep anything Codex may not see out
+# of the repository, or leave the codex extra off.
 # Limitation: a trusted .gitleaks.toml whose `[extend] path` is relative resolves against an empty
 # directory; gitleaks then fails and the run is refused as if secrets were found (exit 5).
 # Codex flags: exec -C <dir> -m <model> -c model_reasoning_effort="<effort>" -s read-only --ephemeral
 # --ignore-user-config --skip-git-repo-check (the directory is not a git repo) -o <file> -
 # Submodule pointer changes are listed in the prompt, not applied (the review tree has no submodules).
 # Plan mode: Codex works in a fresh directory holding only a copy of the plan; the prompt (brief and
-# plan) is scanned by gitleaks with the trusted config of the merge-base with the base branch (HEAD
-# when there is none) and any finding refuses the run (exit 5); the tooling check above applies too.
+# plan) is scanned by gitleaks with the trusted config of the merge-base with the base branch (no
+# merge-base, or a local base that is HEAD, exits 2) and any finding refuses the run (exit 5); the
+# tooling check above applies too. A plan path behind a symlinked directory is refused (exit 2), and
+# so is one for which git check-ignore gives no clear answer (exit 5).
 # Each codex call runs under `timeout` (or `gtimeout`) when available: 540 s in high and plan mode; 300 s + 240 s in release
 # mode (Astra, then the Sol fallback), so the whole run fits the relay's 10-minute Bash timeout.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 
-BASE_BRANCH="${BASE_BRANCH:-$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')}"
+BASE_BRANCH="${BASE_BRANCH:-$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's#^refs/remotes/origin/##')}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
 
 MODE="${1:-}"
@@ -70,36 +94,66 @@ valid_ref() { git rev-parse --verify --quiet "$1^{commit}" >/dev/null 2>&1; }
 # Printable ASCII only, at most 40 characters, quoted: names from the tree are data, not messages.
 safe_name() { LC_ALL=C awk '{ gsub(/[^ -~]/, "?"); if (length($0) > 40) $0 = substr($0, 1, 37) "..."; print "\x27" $0 "\x27" }'; }
 
+# The one trust anchor: origin/<base> when it exists, else the local base branch (a repo with no
+# remote-tracking copy). Never derived from the command's argument. Sets ANCHOR.
+trust_anchor() {
+  # A tag or local branch literally named origin/<base> would win git's short-name lookup: refuse it.
+  if git show-ref --verify --quiet "refs/tags/origin/$BASE_BRANCH" || git show-ref --verify --quiet "refs/heads/origin/$BASE_BRANCH"; then
+    echo "codex-review: 'origin/$BASE_BRANCH' is ambiguous (a tag or local branch has that name); rename or delete it" >&2
+    return 2
+  fi
+  if git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then
+    ANCHOR="refs/remotes/origin/$BASE_BRANCH"
+  elif git show-ref --verify --quiet "refs/heads/$BASE_BRANCH"; then
+    ANCHOR="refs/heads/$BASE_BRANCH"
+  else
+    echo "codex-review: cannot find the base branch '$BASE_BRANCH' (origin/$BASE_BRANCH or a local branch); set BASE_BRANCH in the session environment" >&2
+    return 2
+  fi
+}
+# Exit 2 unless commit $1 is on the anchor: its gitleaks config, ignores and tooling are trusted only then.
+on_base() {
+  git merge-base --is-ancestor "$1" "$ANCHOR" 2>/dev/null && return 0
+  echo "codex-review: the trusted side ($(safe_name <<<"$2")) is not on ${ANCHOR#refs/remotes/}, so its gitleaks config, ignores and tooling could be the change's own; use a ref on $BASE_BRANCH, or set BASE_BRANCH in the session environment" >&2
+  return 2
+}
+
 # Sets base, mb, range, model, effort, RANGE_ARGS and TRUST_REF for $1 (high|release) and ref $2.
 resolve_range() {
-  local arg="$2" full
+  local arg="$2" full bref
   if [[ "$1" == high ]]; then
     base="${arg:-$BASE_BRANCH}"
     # A branch's remote-tracking copy first: a local branch is easy to move to the change under review.
     # Any other expression (HEAD~1, a tag, a hash) is used as given.
     # HEAD is excluded: refs/remotes/origin/HEAD is a symref and would turn `high HEAD` into origin/HEAD.
+    bref="$base"
     if [[ "$base" != HEAD ]] && git show-ref --verify --quiet "refs/remotes/origin/$base"; then
+      bref="refs/remotes/origin/$base"
       base="origin/$base"
     elif ! valid_ref "$base"; then
       echo "codex-review: cannot resolve base '$base'" >&2
       return 2
     fi
-    mb="$(git merge-base "$base" HEAD)" || {
+    mb="$(git merge-base "$bref" HEAD)" || {
       echo "codex-review: no merge-base with '$base'" >&2
       return 2
     }
-    full=$(git rev-parse --symbolic-full-name "$base" 2>/dev/null)
+    full=$(git rev-parse --symbolic-full-name "$bref" 2>/dev/null)
     if [[ "$mb" == "$(git rev-parse HEAD)" && "$full" != refs/remotes/* ]]; then
       echo "codex-review: base '$base' is HEAD or ahead of it, so the trusted side (gitleaks config and ignores) would be the change under review; commit the change on a branch off $base, or fetch origin/$base, and run again" >&2
       return 2
     fi
+    trust_anchor || return 2
+    on_base "$mb" "$base" || return 2
     range="$base..worktree"
     model=gpt-6.1-sol
     effort=high
     RANGE_ARGS=("$mb")
     TRUST_REF="$mb"
   else
-    from="${arg:-$(git describe --tags --abbrev=0 2>/dev/null)}"
+    trust_anchor || return 2
+    # No argument: the newest tag on the base branch, never one that only the change's branch holds.
+    from="${arg:-$(git describe --tags --abbrev=0 "$(git merge-base "$ANCHOR" HEAD 2>/dev/null)" 2>/dev/null)}"
     [[ -n "$from" ]] || {
       echo "no tag found; pass the start ref" >&2
       return 2
@@ -108,6 +162,7 @@ resolve_range() {
       echo "codex-review: cannot resolve '$from'" >&2
       return 2
     }
+    on_base "$from" "$from" || return 2
     range="$from..HEAD"
     model=gpt-6-astra
     effort=high
@@ -139,7 +194,7 @@ refuse_tooling() { # exit 5 when the review tooling itself changed in the range
 }
 
 guard() {
-  python3 -c '
+  python3 -I -c '
 import json, re, sys
 pre = r"^(bash )?(\./|\"?\$\{?CLAUDE_PROJECT_DIR\}?\"?/)?scripts/codex-review\.sh\"? "
 ok = pre + r"(high|release)( [A-Za-z0-9._/~^@][A-Za-z0-9._/~^@-]*)?$"
@@ -164,7 +219,7 @@ if not re.fullmatch(ok, cmd):
 
 # Plan mode: the blueprint text only. Sets TRUST_REF for the tooling check and the gitleaks config.
 plan_review() {
-  local file="$1" t base out rc
+  local file="$1" t out rc p
   if [[ ! "$file" =~ ^[A-Za-z0-9_][A-Za-z0-9._/-]*$ || "/$file/" == *"/../"* ]]; then
     echo "codex-review: plan needs a relative path inside the repo, without .. (got: $(safe_name <<<"$file"))" >&2
     return 2
@@ -181,26 +236,48 @@ plan_review() {
     echo "codex-review: no plan file at $(safe_name <<<"$file")" >&2
     return 2
   fi
-  if ! python3 -c 'import os, sys
+  if ! python3 -I -c 'import os, sys
 r, t = os.path.realpath(sys.argv[1]), os.path.realpath(".")
 sys.exit(0 if r.startswith(t + os.sep) else 1)' "$file"; then
     echo "codex-review: the plan file resolves outside the repo (a symlink on the way?)" >&2
     return 2
   fi
+  # A symlinked directory on the way could lead into a git-ignored directory that git check-ignore does not see.
+  p="$file"
+  while [[ "$p" == */* ]]; do
+    p="${p%/*}"
+    if [[ -L "$p" ]]; then
+      echo "codex-review: refused: a directory on the way to $(safe_name <<<"$file") is a symlink; use the real path" >&2
+      return 2
+    fi
+  done
   # A git-ignored file (or one under an ignored directory) is kept out of what Codex sees everywhere else.
-  if git check-ignore -q -- "$file" 2>/dev/null; then
+  # Exit 0 = ignored, 1 = not ignored; anything else (an error) means we cannot tell, so nothing is sent.
+  git check-ignore -q -- "$file" 2>/dev/null
+  rc=$?
+  if ((rc == 0)); then
     echo "codex-review: refused: $(safe_name <<<"$file") is git-ignored; move the plan to a tracked or untracked, non-ignored path" >&2
     return 5
+  elif ((rc != 1)); then
+    echo "codex-review: cannot tell whether $(safe_name <<<"$file") is git-ignored; not sent" >&2
+    return 5
   fi
-  base="$BASE_BRANCH"
-  git show-ref --verify --quiet "refs/remotes/origin/$base" && base="origin/$base"
-  TRUST_REF=$(git merge-base "$base" HEAD 2>/dev/null) || TRUST_REF=HEAD
+  trust_anchor || return 2
+  TRUST_REF=$(git merge-base "$ANCHOR" HEAD 2>/dev/null) || {
+    echo "codex-review: no merge-base between $ANCHOR and HEAD, so there is no trusted side for the plan check" >&2
+    return 2
+  }
+  if [[ "$ANCHOR" == refs/heads/* && "$TRUST_REF" == "$(git rev-parse HEAD)" ]]; then
+    echo "codex-review: base '$BASE_BRANCH' is HEAD or ahead of it, so the trusted side (gitleaks config and ignores) would be the change under review; commit the change on a branch off $BASE_BRANCH, or fetch origin/$BASE_BRANCH, and run again" >&2
+    return 2
+  fi
   refuse_tooling
   if (($(wc -c <"$file") > MAX_BYTES)); then
     echo "codex-review: the plan is over 600 KB; send a shorter one" >&2
     return 4
   fi
   t="$(mktemp -d)" || return 1
+  t="$(cd -P -- "$t" >/dev/null && pwd -P)" || return 1 # absolute: a relative TMPDIR would break the cd steps
   # shellcheck disable=SC2064  # expand $t now: it is local
   trap "rm -rf '$t'" EXIT
   mkdir -p "$t/wt" "$t/scan" "$t/glcwd"
@@ -219,10 +296,14 @@ sys.exit(0 if r.startswith(t + os.sep) else 1)' "$file"; then
     echo
     echo "=== END PLAN ==="
   } >"$t/prompt.md"
-  sed 's/gitleaks:allow//g' "$t/prompt.md" >"$t/scan/prompt.md"
+  { printf '\n' && cat -- "$t/prompt.md"; } >"$t/scan/prompt.md" || {
+    echo "codex-review: cannot prepare the secret scan; not sent" >&2
+    return 1
+  }
   GL=(--no-banner --redact)
   if git show "$TRUST_REF:.gitleaks.toml" >"$t/gitleaks.toml" 2>/dev/null; then GL+=(--config "$t/gitleaks.toml"); fi
-  if ! (cd "$t/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$t/scan" "${GL[@]}" >&2); then
+  # The plan gets no inline-marker exemption: --ignore-gitleaks-allow also catches a nested marker.
+  if ! (cd "$t/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$t/scan" "${GL[@]}" --ignore-gitleaks-allow >&2); then
     echo "secrets found in the plan; not sent" >&2
     return 5
   fi
@@ -293,13 +374,18 @@ ARG="${2:-}"
 resolve_range "$MODE" "$ARG" || exit 2
 refuse_tooling
 
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d)" || exit 1
 cleanup() { rm -rf "$tmp"; }
 trap cleanup EXIT
+tmp="$(cd -P -- "$tmp" >/dev/null && pwd -P)" || exit 1 # absolute: a relative TMPDIR would break the cd steps
 
 : >"$tmp/untracked.z"
 if [[ "$MODE" == high ]]; then
   gdiff "$mb" -- >"$tmp/diff.txt" || {
+    echo "codex-review: git diff failed" >&2
+    exit 1
+  }
+  gdiff --name-only -z --no-renames "$mb" -- >"$tmp/changed.z" || {
     echo "codex-review: git diff failed" >&2
     exit 1
   }
@@ -309,6 +395,10 @@ if [[ "$MODE" == high ]]; then
   }
 else
   gdiff "$from..HEAD" -- >"$tmp/diff.txt" || {
+    echo "codex-review: git diff failed" >&2
+    exit 1
+  }
+  gdiff --name-only -z --no-renames "$from..HEAD" -- >"$tmp/changed.z" || {
     echo "codex-review: git diff failed" >&2
     exit 1
   }
@@ -345,14 +435,25 @@ done < <(gitlinks "${RANGE_ARGS[@]}")
 # Review tree: tracked files at HEAD, checked out through a temporary index (export-ignore and
 # export-subst do not apply; no .git in the result), plus (high mode) the working-tree changes.
 mkdir -p "$tmp/wt"
+# Every configured filter driver (git-crypt, transcrypt, LFS, ...) has its smudge switched off, so the
+# files leave as stored in git (an encrypted blob stays encrypted; an LFS file stays a pointer).
+NOFILTER=(-c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false)
+while IFS= read -r drv; do
+  [[ -n "$drv" ]] || continue
+  if [[ ! "$drv" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "codex-review: cannot switch off filter driver $(safe_name <<<"$drv"); not sent" >&2
+    exit 1
+  fi
+  NOFILTER+=(-c "filter.$drv.smudge=" -c "filter.$drv.process=" -c "filter.$drv.required=false")
+done < <(git config --name-only --get-regexp '^filter\.' 2>/dev/null | sed -E 's/^filter\.(.*)\.[^.]+$/\1/' | LC_ALL=C sort -u)
 { GIT_INDEX_FILE="$tmp/idx" git -c core.hooksPath=/dev/null read-tree HEAD \
-  && GIT_INDEX_FILE="$tmp/idx" git -c core.hooksPath=/dev/null -c filter.lfs.smudge= -c filter.lfs.process= \
-    -c filter.lfs.required=false checkout-index -a --prefix="$tmp/wt/"; } \
+  && GIT_INDEX_FILE="$tmp/idx" git -c core.hooksPath=/dev/null "${NOFILTER[@]}" checkout-index -a --prefix="$tmp/wt/"; } \
   || {
     echo "codex-review: cannot export HEAD" >&2
     exit 1
   }
 : >"$tmp/untracked.txt"
+: >"$tmp/filtered.txt"
 if [[ "$MODE" == high ]]; then
   excl=()
   while IFS=$'\t' read -r path _; do [[ -n "$path" ]] && excl+=(":(exclude,literal)$path"); done < <(gitlinks HEAD)
@@ -361,8 +462,24 @@ if [[ "$MODE" == high ]]; then
     exit 1
   }
   if [[ -s "$tmp/work.patch" ]]; then
-    # Outside any repository (the ceiling stops discovery at $tmp), git apply works as a plain patch tool.
-    (cd "$tmp/wt" && GIT_CEILING_DIRECTORIES="$tmp" git -c core.hooksPath=/dev/null apply "$tmp/work.patch") \
+    # Run from $tmp, which holds only this script's own files (no HEAD, objects/ or refs/), so no
+    # repository is discovered there. From inside the tree, a tracked config, HEAD, objects/ and refs/
+    # would make it a bare repository whose config (filter drivers) and info/attributes git apply would
+    # read and run. The ceiling is the parent of $tmp, because git ignores a ceiling equal to its
+    # working directory and would keep climbing into any work tree above $TMPDIR. An inherited GIT_DIR,
+    # GIT_WORK_TREE or GIT_INDEX_FILE is cleared because it does not make git climb: it puts git apply
+    # in repository mode with that repository's config and info/attributes, so the user's own filter
+    # drivers would run on the patched files. Outside any repository, git apply is a plain patch tool.
+    # apply.whitespace=nowarn keeps a user's apply.whitespace=fix from stripping the review copy.
+    # A positive check first: if git still sees a repository from $tmp (for example a ceiling that a
+    # character in $TMPDIR splits), nothing is sent.
+    (cd "$tmp" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_CEILING_DIRECTORIES="$(dirname -- "$tmp")" \
+      git rev-parse --git-dir >/dev/null 2>&1) && {
+      echo "codex-review: a git repository is visible from the temp dir; not sent" >&2
+      exit 1
+    }
+    (cd "$tmp" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_CEILING_DIRECTORIES="$(dirname -- "$tmp")" \
+      git -c core.hooksPath=/dev/null -c apply.whitespace=nowarn apply --directory=wt "$tmp/work.patch") \
       || {
         echo "codex-review: could not apply the working-tree changes" >&2
         exit 1
@@ -372,6 +489,24 @@ if [[ "$MODE" == high ]]; then
   while IFS= read -r -d '' f; do
     if [[ -L "$f" ]]; then
       printf '%s (symlink, not sent)\0' "$f" >>"$tmp/untracked.txt"
+      continue
+    fi
+    # A file behind a filter driver (git-crypt, transcrypt) would leave as plaintext: not copied, only named.
+    git check-attr -z filter -- "$f" >"$tmp/attr.z" || {
+      echo "codex-review: git check-attr failed" >&2
+      exit 1
+    }
+    fv=$(
+      {
+        IFS= read -r -d '' _
+        IFS= read -r -d '' _
+        IFS= read -r -d '' v
+        printf '%s' "$v"
+      } <"$tmp/attr.z"
+    )
+    if [[ -n "$fv" && "$fv" != unspecified && "$fv" != unset ]]; then
+      printf '%s (filtered, not sent)\0' "$f" >>"$tmp/untracked.txt"
+      printf '%s\n' "$f" >>"$tmp/filtered.txt"
       continue
     fi
     mkdir -p -- "$tmp/wt/$(dirname -- "$f")" && cp -p -- "$f" "$tmp/wt/$f" && printf '%s\0' "$f" >>"$tmp/untracked.txt"
@@ -401,7 +536,7 @@ if ! git show "$TRUST_REF:.claude/agents/reviewer.md" >"$tmp/reviewer.md" 2>/dev
   checklist_note="Note: the base has no .claude/agents/reviewer.md; the checklist sent to Codex is the working-tree copy"
 fi
 
-python3 - "$tmp/reviewer.md" "$tmp/diff.txt" "$tmp/untracked.txt" "$tmp/submodules.txt" "$tmp/symlinks.z" >"$tmp/prompt.md" <<'PY' || exit $?
+python3 -I - "$tmp/reviewer.md" "$tmp/diff.txt" "$tmp/untracked.txt" "$tmp/submodules.txt" "$tmp/symlinks.z" >"$tmp/prompt.md" <<'PY' || exit $?
 import sys
 reviewer, diff, untracked, submodules, symlinks = sys.argv[1:6]
 def names(path, suffix=""):  # NUL-separated names -> sorted, printable, one line each
@@ -458,16 +593,48 @@ PY
 # from the tree under review: a changed .gitleaks.toml or .gitleaksignore could silence the scan.
 # gitleaks reads both from the scanned directory, so the reviewed copies are removed (Codex does not
 # see them either) and the trusted .gitleaksignore is put in their place.
-# The change under review can also exempt its own lines with inline `gitleaks:allow` markers. New
-# markers can only sit in the diff (inside the prompt) or in untracked files, so those are scanned
-# from copies with the markers stripped. Markers already present at the trusted ref still apply.
-mkdir -p "$tmp/scan/untracked" "$tmp/glcwd"
-sed 's/gitleaks:allow//g' "$tmp/prompt.md" >"$tmp/scan/prompt.md"
-while IFS= read -r -d '' f; do
-  [[ -f "$tmp/wt/$f" ]] || continue # skips "(symlink, not sent)" entries
-  mkdir -p -- "$tmp/scan/untracked/$(dirname -- "$f")"
-  sed 's/gitleaks:allow//g' "$tmp/wt/$f" >"$tmp/scan/untracked/$f"
-done <"$tmp/untracked.txt"
+# The change under review gets no exemption. It can exempt its own lines with inline `gitleaks:allow`
+# markers (a nested `gitleaks:gitleaks:allowallow` survives any strip), it can sit at a path that the
+# config or gitleaks' defaults allowlist (lockfiles, images, vendored directories), and a `-diff` or
+# `binary` attribute hides a changed file's lines from the diff. So the prompt and every changed file
+# (in the range, or in the working tree) and every untracked file are scanned with gitleaks' own
+# --ignore-gitleaks-allow, each in three copies: at its own path (name-based rules still match, but a
+# path allowlist can too), under a bare number (no path allowlist matches) and under a bare number
+# plus its own file name (a path-scoped rule such as nuget.config or .npmrc still matches, and no
+# allowlisted directory is in the path). gitleaks skips content whose first bytes look like a known
+# binary format (%PDF, MZ, SQLite, gzip, ...), so the numbered and named copies, and the prompt copy,
+# are written after a newline; the own-path copy stays byte-identical. Files the change leaves alone
+# keep the trusted ref's markers and the path allowlists, gitleaks' defaults included.
+mkdir -p "$tmp/scan/files" "$tmp/scan/flat" "$tmp/scan/named" "$tmp/glcwd" || {
+  echo "codex-review: cannot prepare the secret scan; not sent" >&2
+  exit 1
+}
+{ printf '\n' && cat -- "$tmp/prompt.md"; } >"$tmp/scan/prompt.md" || {
+  echo "codex-review: cannot prepare the secret scan; not sent" >&2
+  exit 1
+}
+# One changed or untracked path -> three copies for the scan: at its own path under $tmp/scan/files,
+# under a bare number in $tmp/scan/flat and as $tmp/scan/named/<n>/<file name>. Nothing to copy for a
+# deleted file, a gitlink or a "(symlink, not sent)" entry.
+n=0
+: >"$tmp/flatmap.z"
+scan_copy() {
+  [[ -f "$tmp/wt/$1" ]] || return 0
+  n=$((n + 1))
+  mkdir -p -- "$tmp/scan/files/$(dirname -- "$1")" "$tmp/scan/named/$n" \
+    && cp -- "$tmp/wt/$1" "$tmp/scan/files/$1" \
+    && { printf '\n' && cat -- "$tmp/wt/$1"; } >"$tmp/scan/flat/$n" \
+    && { printf '\n' && cat -- "$tmp/wt/$1"; } >"$tmp/scan/named/$n/${1##*/}" \
+    && printf '%s\t%s\0' "$n" "$1" >>"$tmp/flatmap.z"
+}
+for list in "$tmp/changed.z" "$tmp/untracked.txt"; do
+  while IFS= read -r -d '' f; do
+    scan_copy "$f" || {
+      echo "codex-review: cannot prepare the secret scan; not sent" >&2
+      exit 1
+    }
+  done <"$list"
+done
 rm -f "$tmp/wt/.gitleaks.toml" "$tmp/wt/.gitleaksignore"
 # --redact keeps secret values out of stderr, which the relay agent passes on to the transcript.
 GL=(--no-banner --redact)
@@ -477,9 +644,24 @@ if git show "$TRUST_REF:.gitleaksignore" >"$tmp/gitleaksignore" 2>/dev/null; the
   cp "$tmp/gitleaksignore" "$tmp/wt/.gitleaksignore"
   cp "$tmp/gitleaksignore" "$tmp/scan/.gitleaksignore"
 fi
-scan() { (cd "$tmp/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$1" "${GL[@]}" >&2); }
-if ! scan "$tmp/wt" || ! scan "$tmp/scan"; then
+scan() { # dir [extra flag]
+  (cd "$tmp/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$1" "${GL[@]}" ${2:+"$2"} >&2)
+}
+if ! scan "$tmp/wt" || ! scan "$tmp/scan" --ignore-gitleaks-allow; then
   echo "secrets found in what Codex would read; not sent" >&2
+  # A finding in a copy under scan/flat/<n> or scan/named/<n>/ names only the number: say which file that is (the first 100
+  # entries, then a count; a long name keeps its end, with newlines and other unprintable characters made
+  # printable). The map stays in $tmp; it is not part of what Codex receives.
+  if [[ -s "$tmp/flatmap.z" ]]; then
+    echo "scan/flat/<n> and scan/named/<n>/ copies, by number:" >&2
+    k=0
+    while IFS=$'\t' read -r -d '' num path; do
+      k=$((k + 1))
+      ((k > 100)) && continue
+      printf '  flat/%s = %s\n' "$num" "$(printf '%s' "$path" | LC_ALL=C tr -c ' -~' '?' | LC_ALL=C awk '{ if (length($0) > 40) $0 = "..." substr($0, length($0) - 36); print "\x27" $0 "\x27" }')" >&2
+    done <"$tmp/flatmap.z"
+    ((k > 100)) && echo "  ... $((k - 100)) more" >&2
+  fi
   exit 5
 fi
 
@@ -523,6 +705,7 @@ fi
 echo "## Codex review: $MODE $range — $model/$effort — commit $(git rev-parse --short HEAD)"
 [[ -n "$fallback" ]] && echo "$fallback"
 [[ -n "$checklist_note" ]] && echo "$checklist_note"
+[[ -s "$tmp/filtered.txt" ]] && echo "Note: untracked file(s) behind a filter driver (filtered, not sent): $(safe_name <"$tmp/filtered.txt" | head -n 5 | paste -sd, -)"
 [[ -n "$agents_md" ]] && echo "Note: the review tree has $(safe_name <<<"$agents_md" | paste -sd, -), which Codex reads as instructions"
 echo
 cat "$tmp/out.md"

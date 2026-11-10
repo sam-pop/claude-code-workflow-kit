@@ -32,7 +32,7 @@ cd "$(dirname "$0")/.." || exit 2
 BASE_BRANCH="${BASE_BRANCH:-$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
 
-python3 - "$report" "$BASE_BRANCH" <<'PY'
+python3 -I - "$report" "$BASE_BRANCH" <<'PY'
 import datetime, os, re, subprocess, sys
 
 report, base = sys.argv[1], sys.argv[2]

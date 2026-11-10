@@ -84,7 +84,7 @@ export KNOWN_VALUES
 # current or earlier, sets for that role (KNOWN_VALUES): a hand-tailored seat. A missing effort: line passes when the model is one a profile uses.
 tailored_seat() {
   [[ -f "$1" ]] || return 0
-  python3 - "$1" "$2" <<'PY'
+  python3 -I - "$1" "$2" <<'PY'
 import re, sys
 path, role = sys.argv[1:3]
 import os
@@ -117,7 +117,7 @@ done
 
 set_model() { # file model/effort
   [[ -f "$1" ]] || return 0
-  python3 - "$1" "${2%/*}" "${2#*/}" <<'PY'
+  python3 -I - "$1" "${2%/*}" "${2#*/}" <<'PY'
 import re, sys
 path, model, effort = sys.argv[1:4]
 raw = open(path, encoding="utf-8", newline="").read()
@@ -145,7 +145,7 @@ set_model .claude/agents/security-auditor.md "$auditor"
 echo "profile: $profile. Record the profile in docs/decisions.md."
 if command -v claude >/dev/null; then
   cv=$(claude --version 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' | head -1) || cv=""
-  if [[ -n "$cv" ]] && python3 -c 'import sys; sys.exit(0 if tuple(map(int, sys.argv[1].split("."))) < (2, 1, 292) else 1)' "$cv"; then
+  if [[ -n "$cv" ]] && python3 -I -c 'import sys; sys.exit(0 if tuple(map(int, sys.argv[1].split("."))) < (2, 1, 292) else 1)' "$cv"; then
     echo "warn: Claude Code $cv is older than 2.1.292: Agent tool per-call effort unavailable; ladder and risk tiers won't apply"
   fi
 fi

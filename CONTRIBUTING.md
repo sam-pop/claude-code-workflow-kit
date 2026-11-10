@@ -31,7 +31,7 @@ A missing tool is a FAIL that names the command to install it, never a skipped c
 ## Rules
 
 - Shell runs on bash 3.2 with BSD and GNU userland: no `mapfile`, `declare -A`, `local -n`, `${x,,}`, `[[ -v`, `|&` or `coproc`; under `set -u` expand arrays as `${a[@]+"${a[@]}"}`.
-- Inline Python uses the standard library only. Nothing in `template/` may need anything beyond bash, git and python3.
+- Inline Python uses the standard library only and runs as `python3 -I`. Nothing in `template/` may need anything beyond bash, git and python3.
 - Every bug fix comes with a bats test that fails without it, named after the bug.
 - Tests use the helpers in `tests/helpers.bash` and the stubs in `tests/stubs/`; they need no network, and fake secrets are generated at runtime (`fake_token`), never committed.
 - A behaviour change updates `README.md`, `template/HOW-TO-USE.md` and the Upgrade notes in `CHANGELOG.md`.

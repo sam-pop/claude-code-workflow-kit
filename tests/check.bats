@@ -139,3 +139,223 @@ root_check_repo() {
   run "$R/scripts/check.sh" security
   refute_output --partial SHADOW
 }
+
+@test "root check.sh: a tracked file name is linted as itself, never read as a markdownlint glob" {
+  with_tools
+  require_real lychee
+  require_real shellcheck
+  require_real shfmt
+  mjs="$REPO_ROOT/node_modules/markdownlint-cli2/markdownlint-cli2.mjs"
+  if [[ ! -f "$mjs" ]]; then
+    [[ "${KIT_REQUIRE_REAL_TOOLS:-}" == 1 ]] && fail "markdownlint-cli2 is required (KIT_REQUIRE_REAL_TOOLS=1) but not installed"
+    skip "markdownlint-cli2 not installed"
+  fi
+  root_check_repo
+  cp "$REPO_ROOT/.markdownlint-cli2.jsonc" "$REPO_ROOT/.editorconfig" "$R/"
+  printf '/node_modules\n' >"$R/.gitignore"
+  ln -s "$REPO_ROOT/node_modules" "$R/node_modules"
+  # Read as a glob, docs/{a,b}.md names two files that do not exist, and the real file goes unlinted.
+  mkdir -p "$R/docs"
+  printf '# N\n\n\nbad\n' >"$R/docs/{a,b}.md"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "MD012"
+}
+
+@test "root check.sh: markdownlint never loads code from the tree, in lint, lint --changed and the lint hook" {
+  with_tools
+  require_real lychee
+  require_real shellcheck
+  require_real shfmt
+  mjs="$REPO_ROOT/node_modules/markdownlint-cli2/markdownlint-cli2.mjs"
+  if [[ ! -f "$mjs" ]]; then
+    [[ "${KIT_REQUIRE_REAL_TOOLS:-}" == 1 ]] && fail "markdownlint-cli2 is required (KIT_REQUIRE_REAL_TOOLS=1) but not installed"
+    skip "markdownlint-cli2 not installed"
+  fi
+  root_check_repo
+  cp "$REPO_ROOT/scripts/lint-hook.sh" "$R/scripts/"
+  cp "$REPO_ROOT/.markdownlint-cli2.jsonc" "$REPO_ROOT/.editorconfig" "$R/"
+  printf '/node_modules\n' >"$R/.gitignore"
+  ln -s "$REPO_ROOT/node_modules" "$R/node_modules"
+  mkdir -p "$R/docs/guide" "$R/docs/y"
+  # Three ways a config in the tree can make the linter run code; each writes a marker when loaded.
+  printf 'require("fs").writeFileSync("%s/ran-cli2-cjs", "x");\nmodule.exports = {};\n' "$BATS_TEST_TMPDIR" >"$R/docs/guide/.markdownlint-cli2.cjs"
+  printf 'require("fs").writeFileSync("%s/ran-root-cjs", "x");\nmodule.exports = {};\n' "$BATS_TEST_TMPDIR" >"$R/.markdownlint.cjs"
+  printf 'require("fs").writeFileSync("%s/ran-rule-cjs", "x");\nmodule.exports = { names: ["custom-x"], description: "x", tags: ["custom-t"], function: function () {} };\n' "$BATS_TEST_TMPDIR" >"$R/docs/y/rule.cjs"
+  printf '{ "customRules": ["./rule.cjs"] }\n' >"$R/docs/y/.markdownlint-cli2.jsonc"
+  printf '# T\n\n\nbad\n' >"$R/docs/guide/bad.md" # two blank lines: MD012
+  printf '# Y\n\nok\n' >"$R/docs/y/ok.md"
+  printf '# R\n\nok\n' >"$R/ok.md"
+  git -C "$R" add -A
+
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "MD012"
+  run "$R/scripts/check.sh" lint --changed
+  assert_failure 1
+  assert_output --partial "MD012"
+  run env CLAUDE_PROJECT_DIR="$R" "$R/scripts/lint-hook.sh"
+  assert_failure 2
+  assert_output --partial "MD012"
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-cli2-cjs" ]]
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-root-cjs" ]]
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-rule-cjs" ]]
+}
+
+# A scratch repo that runs every real linter of the root check.sh, for the tests below that put
+# hostile files in the tree. Needs the pinned tools and markdownlint-cli2; skips when one is missing.
+lint_tree_repo() {
+  with_tools
+  require_real lychee
+  require_real actionlint
+  require_real shellcheck
+  require_real shfmt
+  if [[ ! -f "$REPO_ROOT/node_modules/markdownlint-cli2/markdownlint-cli2.mjs" ]]; then
+    [[ "${KIT_REQUIRE_REAL_TOOLS:-}" == 1 ]] && fail "markdownlint-cli2 is required (KIT_REQUIRE_REAL_TOOLS=1) but not installed"
+    skip "markdownlint-cli2 not installed"
+  fi
+  root_check_repo
+  cp "$REPO_ROOT/.markdownlint-cli2.jsonc" "$REPO_ROOT/.editorconfig" "$R/"
+  printf '/node_modules\n' >"$R/.gitignore"
+  ln -s "$REPO_ROOT/node_modules" "$R/node_modules"
+  printf '# R\n\nok\n' >"$R/ok.md"
+}
+
+@test "root check.sh: lychee ignores a lychee.toml in the tree, so its preprocess command never runs (H-A)" {
+  lint_tree_repo
+  mkdir -p "$R/docs/guide"
+  printf '#!/bin/sh\necho x >>"%s/ran-lychee-preprocess"\nexec cat "$1"\n' "$BATS_TEST_TMPDIR" >"$R/docs/guide/render"
+  chmod +x "$R/docs/guide/render"
+  printf 'preprocess = { command = "docs/guide/render" }\n' >"$R/lychee.toml"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-lychee-preprocess" ]]
+}
+
+@test "root check.sh: a tracked file named like an actionlint option is read as a file name, so -shellcheck=<path> runs nothing (H-A)" {
+  lint_tree_repo
+  mkdir -p "$R/docs/.github/workflows" "$R/-shellcheck=docs/.github/workflows" "$R/.github/workflows"
+  # a workflow with a run step, so actionlint has a script to hand to the injected "shellcheck"
+  printf 'name: x\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n' >"$R/.github/workflows/real.yml"
+  printf '#!/bin/sh\necho x >>"%s/ran-actionlint-argv"\necho "[]"\n' "$BATS_TEST_TMPDIR" >"$R/docs/.github/workflows/ci.yml"
+  chmod +x "$R/docs/.github/workflows/ci.yml"
+  printf 'name: x\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n' >"$R/-shellcheck=docs/.github/workflows/ci.yml"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-actionlint-argv" ]]
+}
+
+@test "root check.sh: a tracked Markdown file named --preprocess=<path> is read as a file name by lychee (H-A)" {
+  lint_tree_repo
+  mkdir -p "$R/docs/guide" "$R/--preprocess=docs/guide"
+  printf '#!/bin/sh\necho x >>"%s/ran-lychee-argv"\nexec cat "$1"\n' "$BATS_TEST_TMPDIR" >"$R/docs/guide/notes.md"
+  chmod +x "$R/docs/guide/notes.md"
+  printf '# Notes\n\ntext\n' >"$R/--preprocess=docs/guide/notes.md"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-lychee-argv" ]]
+}
+
+@test "root check.sh: a tracked script named like a shellcheck option is linted as a file (H-A)" {
+  lint_tree_repo
+  # shellcheck disable=SC2016  # the unquoted $1 is the finding under test
+  printf '#!/usr/bin/env bash\nrm $1\n' >"$R/-x.sh"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "SC2086"
+}
+
+@test "root check.sh: a .markdownlint-cli2.jsonc in the tree cannot make markdownlint rewrite files outside the repo (H-A)" {
+  lint_tree_repo
+  mkdir -p "$BATS_TEST_TMPDIR/outside"
+  printf '# T\n\n\nbad\n' >"$BATS_TEST_TMPDIR/outside/victim.md" # two blank lines: MD012, fixable
+  cp "$BATS_TEST_TMPDIR/outside/victim.md" "$BATS_TEST_TMPDIR/victim.orig"
+  # the config the repo itself uses, plus fix and an absolute glob to a file outside the clone
+  sed 's|^{|{ "fix": true, "globs": ["'"$BATS_TEST_TMPDIR"'/outside/*.md"],|' "$REPO_ROOT/.markdownlint-cli2.jsonc" >"$R/.markdownlint-cli2.jsonc"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  cmp "$BATS_TEST_TMPDIR/outside/victim.md" "$BATS_TEST_TMPDIR/victim.orig"
+  # and an in-repo file is not fixed either
+  printf '# T\n\n\nbad\n' >"$R/docs.md"
+  cp "$R/docs.md" "$BATS_TEST_TMPDIR/docs.orig"
+  git -C "$R" add -A
+  run "$R/scripts/check.sh" lint
+  cmp "$R/docs.md" "$BATS_TEST_TMPDIR/docs.orig"
+}
+
+@test "root check.sh: tracked .tools/ or node_modules/ fails before any tool runs" {
+  root_check_repo
+  mkdir -p "$R/.tools/bin" "$R/node_modules/.bin"
+  printf '#!/usr/bin/env bash\necho x >"%s/ran-tracked-tool"\n' "$BATS_TEST_TMPDIR" >"$R/.tools/bin/shellcheck"
+  chmod +x "$R/.tools/bin/shellcheck"
+  printf '#!/usr/bin/env bash\necho a\n' >"$R/scripts/a.sh"
+  git -C "$R" add scripts/a.sh
+  git -C "$R" add -f .tools/bin/shellcheck
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-tracked-tool" ]]
+  # the same guard for node_modules/
+  git -C "$R" rm -q --cached -r .tools
+  printf 'x\n' >"$R/node_modules/.bin/bats"
+  git -C "$R" add -f node_modules/.bin/bats
+  run "$R/scripts/check.sh" test
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+}
+
+@test "root check.sh: tracked .TOOLS/ or Node_Modules/ (other case, as on a case-insensitive checkout) fails too" {
+  root_check_repo
+  mkdir -p "$R/.TOOLS/bin"
+  printf '#!/usr/bin/env bash\necho x >"%s/ran-tracked-tool"\n' "$BATS_TEST_TMPDIR" >"$R/.TOOLS/bin/shellcheck"
+  chmod +x "$R/.TOOLS/bin/shellcheck"
+  git -C "$R" add -f .TOOLS/bin/shellcheck
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-tracked-tool" ]]
+  git -C "$R" rm -q --cached -r .TOOLS
+  mkdir -p "$R/Node_Modules/.bin"
+  printf 'x\n' >"$R/Node_Modules/.bin/bats"
+  git -C "$R" add -f Node_Modules/.bin/bats
+  run "$R/scripts/check.sh" test
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+}
+
+@test "root check.sh: GIT_LITERAL_PATHSPECS does not switch off the tracked-tools guard" {
+  root_check_repo
+  mkdir -p "$R/.tools/bin"
+  printf '#!/usr/bin/env bash\n' >"$R/.tools/bin/x"
+  git -C "$R" add -f .tools/bin/x
+  GIT_LITERAL_PATHSPECS=1 run "$R/scripts/check.sh" build
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+}
+
+@test "root check.sh: a tracked node_modules or .tools entry itself (a symlink) fails the guard" {
+  # Checkout replaces the git-ignored directory with the branch's symlink, and check.sh then runs the
+  # tools the link points at.
+  root_check_repo
+  mkdir -p "$R/evil"
+  for name in node_modules .tools .TOOLS; do
+    ln -s evil "$R/$name"
+    git -C "$R" add -f "$name"
+    run "$R/scripts/check.sh" build
+    assert_failure 1
+    assert_output --partial "files under .tools/ or node_modules/ are tracked"
+    git -C "$R" rm -q --cached "$name"
+    rm "$R/$name"
+  done
+}
+
+@test "root check.sh: a failing git ls-files fails the guard closed" {
+  export KIT_STUCK_INNER=1
+  mkdir -p "$BATS_TEST_TMPDIR/nogit/scripts"
+  cp "$REPO_ROOT/scripts/check.sh" "$BATS_TEST_TMPDIR/nogit/scripts/"
+  GIT_CEILING_DIRECTORIES="$BATS_TEST_TMPDIR" run "$BATS_TEST_TMPDIR/nogit/scripts/check.sh" build
+  assert_failure 1
+  assert_output --partial "git ls-files failed"
+}

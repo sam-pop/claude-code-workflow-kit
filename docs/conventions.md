@@ -58,10 +58,13 @@ Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh
 |---|---|
 | Shell bug patterns (unquoted expansions, unchecked `cd`, `A && B \|\| C`) | mechanical: `lint` shellcheck |
 | Shell formatting that differs from `.editorconfig` | mechanical: `lint` shfmt |
-| Markdown structure errors | mechanical: `lint` markdownlint-cli2 |
+| Markdown structure errors | mechanical: `lint` markdownlint-cli2 (API with `noImport`) |
+| A linter run that can load code from config in the tree, read a tracked file name as an option, or write files through a tree config | mechanical: `test` (`tests/check.bats`) |
+| Tracked `.tools/` or `node_modules/` files (checkout would replace the tools `check.sh` runs) | mechanical: `test` (`tests/check.bats`) |
 | Broken relative link or heading anchor in Markdown | mechanical: `lint` lychee `--offline --include-fragments` |
 | Workflow syntax or expression errors | mechanical: `lint` actionlint |
 | A secret in the tree | mechanical: `security` gitleaks |
+| Inline `python3` without `-I` (a `json.py` or `re.py` in the working directory would be imported) | mechanical: `test` (`tests/consistency.bats`) |
 | bash-4 syntax (`mapfile`, `declare -A`, `local -n`, `${x,,}`, `[[ -v`, `\|&`, `coproc`) | mechanical: `test` (`tests/consistency.bats`) |
 | Root copy drifting from `template/` | mechanical: `test` (`tests/consistency.bats`) |
 | Maintainer content inside `template/` | mechanical: `test` (`tests/consistency.bats`) |

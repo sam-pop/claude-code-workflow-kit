@@ -11,6 +11,20 @@
 # command that installs it, never a silent skip.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
+# check.sh runs the tools in .tools/ and node_modules/ on the maintainer's machine, so a branch that
+# tracks files there would replace them on checkout. Both directories are git-ignored; refuse before
+# any tool runs. The match ignores case (on a case-insensitive checkout, macOS, .TOOLS is .tools),
+# counts the entry itself (a tracked symlink named node_modules replaces the directory on checkout)
+# and reads the plain file list, not a pathspec, so GIT_LITERAL_PATHSPECS cannot switch it off.
+# A failing git ls-files is a failure too (pipefail), never a pass.
+if ! n=$(git ls-files -z | LC_ALL=C tr '\0' '\n' | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C awk '/^(\.tools|node_modules)(\/|$)/{n++} END{print n+0}'); then
+  echo "FAIL: git ls-files failed; cannot tell whether .tools/ or node_modules/ are tracked" >&2
+  exit 1
+fi
+if [[ "$n" -gt 0 ]]; then
+  echo "FAIL: files under .tools/ or node_modules/ are tracked; checking out such a branch replaces the tools check.sh runs" >&2
+  exit 1
+fi
 # Profiles extra: scripts/stuck-detect.sh counts identical failures for the writer's stop rule.
 # While it is off the file is absent and check.sh keeps no state. Keep this line when tailoring.
 [[ -z "${KIT_STUCK_INNER:-}" && -f scripts/stuck-detect.sh ]] && exec bash scripts/stuck-detect.sh "$@"
@@ -31,6 +45,21 @@ skip() {
 export PATH
 BATS="$PWD/node_modules/.bin/bats"
 MDLINT="$PWD/node_modules/.bin/markdownlint-cli2"
+MDLINT_JS="$PWD/node_modules/markdownlint-cli2/markdownlint-cli2.mjs"
+# markdownlint-cli2 loads JavaScript named by a .markdownlint-cli2.cjs/.mjs, a .markdownlint.cjs/.mjs,
+# or customRules, markdownItPlugins and outputFormatters entries in any config file in the tree it
+# lints, so a linted branch could run code here. Its API option noImport switches all module loading
+# off and keeps the JSON/YAML rules (the root .markdownlint-cli2.jsonc); the CLI has no flag. The same
+# config can also write: "fix": true rewrites every linted file, and "globs" adds files, absolute paths
+# outside the repo included, to that set. optionsOverride {fix: false} beats any config file, and
+# noGlobs ignores the "globs" setting, and each file is passed as ":./<path>" (markdownlint-cli2's
+# literal-path form; a plain argument is a glob pattern), so only the files named are read, never
+# written. A node error is a lint failure, never a pass. Not handled: `extends` resolves a path and
+# reads it as data, so a config can name any readable file and a parse error can echo its lines into
+# the lint output.
+mdlint() {
+  node --input-type=module -e 'const {main}=await import(process.argv[1]); try { process.exitCode = await main({argv: process.argv.slice(2), logMessage: console.log, logError: console.error, noImport: true, noGlobs: true, optionsOverride: {fix: false}}); } catch (e) { console.error(e); process.exitCode = 2; }' "$MDLINT_JS" "$@"
+}
 need() { # tool hint
   [[ "$1" == */* ]] && [[ -x "$1" ]] && return 0
   [[ "$1" != */* ]] && command -v "$1" >/dev/null && return 0
@@ -66,25 +95,30 @@ shell_files() { grep -E '\.(sh|bash|bats)$|^tests/stubs/[^/]+$' | while IFS= rea
 md_files() { grep -E '\.md$' | grep -vE '^docs/research/|^docs/reviews/[^/]*-[^/]*\.md$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
 workflow_files() { grep -E '(^|/)\.github/workflows/[^/]+\.ya?ml$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
 
+# Every path handed to a linter starts with ./, so a tracked file named like an option
+# (-shellcheck=<exe> for actionlint, --preprocess=<exe> for lychee) is read as a file name. lychee also
+# runs with --config /dev/null: it would otherwise load a lychee.toml from the tree, whose `preprocess`
+# command it runs on every file. actionlint's .github/actionlint.yaml and shellcheck's .shellcheckrc
+# cannot name an executable; both tools take theirs from PATH.
 lint_files() { # reads paths on stdin
   local rc=0 list sh=() md=() mdl=() wf=() f
   list=$(cat)
-  while IFS= read -r f; do [[ -n "$f" ]] && sh+=("$f"); done < <(shell_files <<<"$list")
-  while IFS= read -r f; do [[ -n "$f" ]] && md+=("$f"); done < <(md_files <<<"$list")
-  while IFS= read -r f; do [[ -n "$f" ]] && mdl+=("$f"); done < <(md_files <<<"$list") # the same set: saved reports are left out
-  while IFS= read -r f; do [[ -n "$f" ]] && wf+=("$f"); done < <(workflow_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && sh+=("./$f"); done < <(shell_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && md+=(":./$f"); done < <(md_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && mdl+=("./$f"); done < <(md_files <<<"$list") # the same set: saved reports are left out
+  while IFS= read -r f; do [[ -n "$f" ]] && wf+=("./$f"); done < <(workflow_files <<<"$list")
   if ((${#sh[@]})); then
     if need shellcheck "$TOOLS_HINT"; then shellcheck "${sh[@]}" || rc=1; else rc=1; fi
     if need shfmt "$TOOLS_HINT"; then shfmt -d "${sh[@]}" || rc=1; else rc=1; fi
   fi
   if ((${#md[@]})); then
-    if need "$MDLINT" "$NPM_HINT"; then "$MDLINT" "${md[@]}" >/dev/null 2>"$TMP_LINT" || {
+    if need "$MDLINT" "$NPM_HINT"; then mdlint "${md[@]}" >/dev/null 2>"$TMP_LINT" || {
       cat "$TMP_LINT" >&2
       rc=1
     }; else rc=1; fi
   fi
   if ((${#mdl[@]})); then
-    if need lychee "$TOOLS_HINT"; then lychee --offline --include-fragments --no-progress "${mdl[@]}" >"$TMP_LINT" 2>&1 || {
+    if need lychee "$TOOLS_HINT"; then lychee --config /dev/null --offline --include-fragments --no-progress "${mdl[@]}" >"$TMP_LINT" 2>&1 || {
       cat "$TMP_LINT" >&2
       rc=1
     }; else rc=1; fi

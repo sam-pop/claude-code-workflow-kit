@@ -11,8 +11,8 @@ setup() {
   extras_on verify-review
 }
 
-stop_json() { python3 -c 'import json,sys; print(json.dumps({"last_assistant_message": sys.argv[1]}))' "$1"; }
-handback_json() { python3 -c 'import json,sys; print(json.dumps({"tool_input": {"message": sys.argv[1]}}))' "$1"; }
+stop_json() { python3 -I -c 'import json,sys; print(json.dumps({"last_assistant_message": sys.argv[1]}))' "$1"; }
+handback_json() { python3 -I -c 'import json,sys; print(json.dumps({"tool_input": {"message": sys.argv[1]}}))' "$1"; }
 saved() { find docs/reviews -name '*-*.md' | sort; }
 
 @test "review, security, codex and stuck reports are saved with their kind as suffix" {
@@ -133,4 +133,13 @@ on_branch_with_readme_change() {
   assert_output --regexp -- '-codex-plan\.md$'
   run grep -c Verification "$(saved)"
   assert_output 0
+}
+
+@test "a root json.py is never imported by the capture hook" {
+  printf 'import os\nopen(os.environ["BATS_TEST_TMPDIR"] + "/pwned", "w").close()\n' >json.py
+  stop_json "## Review: x"$'\nbody' >"$BATS_TEST_TMPDIR/in.json"
+  run scripts/capture-review.sh stop <"$BATS_TEST_TMPDIR/in.json"
+  assert_success
+  [[ ! -e "$BATS_TEST_TMPDIR/pwned" ]]
+  assert_equal "$(saved | wc -l | tr -d ' ')" 1
 }
