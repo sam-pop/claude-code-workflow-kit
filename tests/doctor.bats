@@ -234,3 +234,10 @@ PY2
   run scripts/check.sh doctor
   assert_output --partial "warn: security-auditor has no effort: add an \`effort:\` line to its frontmatter (or, with the profiles extra on, run \`scripts/set-models.sh <profile>\` if the seats are untailored)"
 }
+
+@test "doctor warns on an unmerged .kit-base" {
+  tailor
+  echo x >docs/conventions.md.kit-base
+  run scripts/check.sh doctor
+  assert_output --partial "warn: 1 unmerged *.kit file(s)"
+}
