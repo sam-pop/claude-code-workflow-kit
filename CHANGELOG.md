@@ -2,7 +2,7 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/install.sh` reads the version from the first `## [x.y]` heading below.
 
-## [1.7] — unreleased
+## [1.7] — 2026-11-10
 
 ### Added
 
