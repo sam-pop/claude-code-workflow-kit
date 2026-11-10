@@ -11,6 +11,13 @@
 # command that installs it, never a silent skip.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
+# check.sh runs the tools in .tools/ and node_modules/ on the maintainer's machine, so a branch that
+# tracks files there would replace them on checkout. Both directories are git-ignored; refuse before
+# any tool runs.
+if [[ -n "$(git ls-files -- .tools node_modules 2>/dev/null)" ]]; then
+  echo "FAIL: files under .tools/ or node_modules/ are tracked; checking out such a branch replaces the tools check.sh runs" >&2
+  exit 1
+fi
 # Profiles extra: scripts/stuck-detect.sh counts identical failures for the writer's stop rule.
 # While it is off the file is absent and check.sh keeps no state. Keep this line when tailoring.
 [[ -z "${KIT_STUCK_INNER:-}" && -f scripts/stuck-detect.sh ]] && exec bash scripts/stuck-detect.sh "$@"
@@ -31,6 +38,15 @@ skip() {
 export PATH
 BATS="$PWD/node_modules/.bin/bats"
 MDLINT="$PWD/node_modules/.bin/markdownlint-cli2"
+MDLINT_JS="$PWD/node_modules/markdownlint-cli2/markdownlint-cli2.mjs"
+# markdownlint-cli2 loads JavaScript named by a .markdownlint-cli2.cjs/.mjs, a .markdownlint.cjs, or
+# customRules, markdownItPlugins, outputFormatters and extends entries in any config file in the tree
+# it lints, so a linted branch could run code here. Its API option noImport switches all module
+# loading off and keeps the JSON/YAML rules (the root .markdownlint-cli2.jsonc); the CLI has no flag.
+# A node error is a lint failure, never a pass.
+mdlint() {
+  node --input-type=module -e 'const {main}=await import(process.argv[1]); try { process.exitCode = await main({argv: process.argv.slice(2), logMessage: console.log, logError: console.error, noImport: true}); } catch (e) { console.error(e); process.exitCode = 2; }' "$MDLINT_JS" "$@"
+}
 need() { # tool hint
   [[ "$1" == */* ]] && [[ -x "$1" ]] && return 0
   [[ "$1" != */* ]] && command -v "$1" >/dev/null && return 0
@@ -78,7 +94,7 @@ lint_files() { # reads paths on stdin
     if need shfmt "$TOOLS_HINT"; then shfmt -d "${sh[@]}" || rc=1; else rc=1; fi
   fi
   if ((${#md[@]})); then
-    if need "$MDLINT" "$NPM_HINT"; then "$MDLINT" "${md[@]}" >/dev/null 2>"$TMP_LINT" || {
+    if need "$MDLINT" "$NPM_HINT"; then mdlint "${md[@]}" >/dev/null 2>"$TMP_LINT" || {
       cat "$TMP_LINT" >&2
       rc=1
     }; else rc=1; fi

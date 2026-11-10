@@ -30,7 +30,7 @@ Optional companion skills: install per [that repo's README](https://github.com/m
 
    Nothing is overwritten. Where a file already existed, the kit's version lands beside it as `*.kit` to merge by hand. The install also writes `.claude/kit-version` and `.claude/kit-manifest` (commit both); they are what lets `--upgrade` later tell an untouched file from a tailored one.
 
-   **Review-only** (other people commit to the repo): install into a separate review workspace instead, never into their repo. Hooks run shell commands on your machine, and a PR could change them. `TAILOR.md` sets this up.
+   **Review-only** (other people commit to the repo): install into a separate review workspace instead, never into their repo. Hooks run shell commands on your machine, including your linters and the config files they load, and a PR could change them. `TAILOR.md` sets this up. On a shared repo with outside contributors, review a branch's changes to `.claude/`, `scripts/` and every file your hooks, linters, formatters, tests or build execute before opening Claude Code on it.
 
 2. **Tailor.** Open Claude Code in the repo and say:
    > Read TAILOR.md and tailor the kit to this repo.

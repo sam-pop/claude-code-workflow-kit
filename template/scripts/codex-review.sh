@@ -55,6 +55,11 @@
 # OpenAI. gitleaks is required: it scans that directory and the final prompt (which holds the diff,
 # removed lines included) for known-pattern secrets, and any finding refuses the run. A tracked file
 # that should never be tracked (.env, *.pem, *.p12, id_rsa, id_ed25519) refuses the run too.
+# Every changed or untracked file is scanned with inline `gitleaks:allow` markers ignored, at its own
+# path and under a neutral name, so neither a new marker nor a path exemption covers it. Files the
+# change leaves alone keep gitleaks' default path exemptions (lockfiles, images, vendored
+# directories), so a credential already committed there is sent; and the scan is pattern-based: text
+# in UTF-16 or in a working-tree-encoding the export re-encodes can pass.
 # Limitation: a trusted .gitleaks.toml whose `[extend] path` is relative resolves against an empty
 # directory; gitleaks then fails and the run is refused as if secrets were found (exit 5).
 # Codex flags: exec -C <dir> -m <model> -c model_reasoning_effort="<effort>" -s read-only --ephemeral
@@ -284,13 +289,14 @@ sys.exit(0 if r.startswith(t + os.sep) else 1)' "$file"; then
     echo
     echo "=== END PLAN ==="
   } >"$t/prompt.md"
-  LC_ALL=C sed 's/gitleaks:allow//g' "$t/prompt.md" >"$t/scan/prompt.md" || {
+  cp -- "$t/prompt.md" "$t/scan/prompt.md" || {
     echo "codex-review: cannot prepare the secret scan; not sent" >&2
     return 1
   }
   GL=(--no-banner --redact)
   if git show "$TRUST_REF:.gitleaks.toml" >"$t/gitleaks.toml" 2>/dev/null; then GL+=(--config "$t/gitleaks.toml"); fi
-  if ! (cd "$t/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$t/scan" "${GL[@]}" >&2); then
+  # The plan gets no inline-marker exemption: --ignore-gitleaks-allow also catches a nested marker.
+  if ! (cd "$t/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$t/scan" "${GL[@]}" --ignore-gitleaks-allow >&2); then
     echo "secrets found in the plan; not sent" >&2
     return 5
   fi
@@ -448,8 +454,11 @@ if [[ "$MODE" == high ]]; then
     exit 1
   }
   if [[ -s "$tmp/work.patch" ]]; then
-    # Outside any repository (the ceiling stops discovery at $tmp), git apply works as a plain patch tool.
-    (cd "$tmp/wt" && GIT_CEILING_DIRECTORIES="$tmp" git -c core.hooksPath=/dev/null apply "$tmp/work.patch") \
+    # Run from $tmp, which holds only this script's own files, and stop discovery there: from inside the
+    # tree, a tracked config, HEAD, objects/ and refs/ would make it a bare repository whose config
+    # (filter drivers) and info/attributes git apply would read and run. Outside any repository it is
+    # a plain patch tool.
+    (cd "$tmp" && GIT_CEILING_DIRECTORIES="$tmp" git -c core.hooksPath=/dev/null apply --directory=wt "$tmp/work.patch") \
       || {
         echo "codex-review: could not apply the working-tree changes" >&2
         exit 1
@@ -563,27 +572,36 @@ PY
 # from the tree under review: a changed .gitleaks.toml or .gitleaksignore could silence the scan.
 # gitleaks reads both from the scanned directory, so the reviewed copies are removed (Codex does not
 # see them either) and the trusted .gitleaksignore is put in their place.
-# The change under review can also exempt its own lines with inline `gitleaks:allow` markers, and a
-# `-diff` or `binary` attribute hides a changed file's lines from the diff. So every changed file
-# (in the range, or in the working tree) and every untracked file is scanned from a copy with the
-# markers stripped; a marker already present at the trusted ref applies only to files the change leaves alone.
-mkdir -p "$tmp/scan/files" "$tmp/glcwd" || {
+# The change under review gets no exemption. It can exempt its own lines with inline `gitleaks:allow`
+# markers (a nested `gitleaks:gitleaks:allowallow` survives any strip), it can sit at a path that the
+# config or gitleaks' defaults allowlist (lockfiles, images, vendored directories), and a `-diff` or
+# `binary` attribute hides a changed file's lines from the diff. So the prompt and every changed file
+# (in the range, or in the working tree) and every untracked file are scanned with gitleaks' own
+# --ignore-gitleaks-allow, each at its own path (name-based rules still match) and as a copy named by
+# a bare number that no path allowlist matches. Files the change leaves alone keep the trusted ref's
+# markers and the path allowlists, gitleaks' defaults included.
+mkdir -p "$tmp/scan/files" "$tmp/scan/flat" "$tmp/glcwd" || {
   echo "codex-review: cannot prepare the secret scan; not sent" >&2
   exit 1
 }
-LC_ALL=C sed 's/gitleaks:allow//g' "$tmp/prompt.md" >"$tmp/scan/prompt.md" || {
+cp -- "$tmp/prompt.md" "$tmp/scan/prompt.md" || {
   echo "codex-review: cannot prepare the secret scan; not sent" >&2
   exit 1
 }
-# One changed or untracked path -> a marker-stripped copy under $tmp/scan/files.
-# Nothing to copy for a deleted file, a gitlink or a "(symlink, not sent)" entry.
-strip_copy() {
+# One changed or untracked path -> two copies for the scan: at its own path under $tmp/scan/files and
+# under a bare number in $tmp/scan/flat. Nothing to copy for a deleted file, a gitlink or a
+# "(symlink, not sent)" entry.
+n=0
+scan_copy() {
   [[ -f "$tmp/wt/$1" ]] || return 0
-  mkdir -p -- "$tmp/scan/files/$(dirname -- "$1")" && LC_ALL=C sed 's/gitleaks:allow//g' "$tmp/wt/$1" >"$tmp/scan/files/$1"
+  n=$((n + 1))
+  mkdir -p -- "$tmp/scan/files/$(dirname -- "$1")" \
+    && cp -- "$tmp/wt/$1" "$tmp/scan/files/$1" \
+    && cp -- "$tmp/wt/$1" "$tmp/scan/flat/$n"
 }
 for list in "$tmp/changed.z" "$tmp/untracked.txt"; do
   while IFS= read -r -d '' f; do
-    strip_copy "$f" || {
+    scan_copy "$f" || {
       echo "codex-review: cannot prepare the secret scan; not sent" >&2
       exit 1
     }
@@ -598,8 +616,10 @@ if git show "$TRUST_REF:.gitleaksignore" >"$tmp/gitleaksignore" 2>/dev/null; the
   cp "$tmp/gitleaksignore" "$tmp/wt/.gitleaksignore"
   cp "$tmp/gitleaksignore" "$tmp/scan/.gitleaksignore"
 fi
-scan() { (cd "$tmp/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$1" "${GL[@]}" >&2); }
-if ! scan "$tmp/wt" || ! scan "$tmp/scan"; then
+scan() { # dir [extra flag]
+  (cd "$tmp/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$1" "${GL[@]}" ${2:+"$2"} >&2)
+}
+if ! scan "$tmp/wt" || ! scan "$tmp/scan" --ignore-gitleaks-allow; then
   echo "secrets found in what Codex would read; not sent" >&2
   exit 5
 fi

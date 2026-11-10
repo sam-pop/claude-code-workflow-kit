@@ -2,7 +2,7 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/install.sh` reads the version from the first `## [x.y]` heading below.
 
-## [1.6] — 2026-11-09
+## [1.6] — 2026-11-10
 
 ### Added
 
@@ -41,8 +41,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 
 - Every inline Python the kit runs (hooks, the installer, `extras.sh`, `set-models.sh`, the Codex guard) now runs as `python3 -I`, so a `json.py` or `re.py` in the working directory is no longer imported. Before, a repo holding such a file could run code from the Stop and SubagentStop hooks and the installer, and could switch off the codex-reviewer's Bash guard. `tests/consistency.bats` fails on a `python3` or `python3.N` call that lacks `-I`, takes its script from a redirect or heredoc without `-`, or puts its options on a continuation line.
 - `codex-review.sh` exports the review tree with every configured filter driver's smudge off (git-crypt, transcrypt, LFS), so Codex gets files as stored in git instead of decrypted content; an untracked file behind a filter driver is named in the report and not sent.
-- `codex-review.sh` scans every changed file from a copy without its `gitleaks:allow` markers, not only untracked files, so a `-diff` or `binary` attribute in the change can no longer hide a new marker.
+- `codex-review.sh` gives the change under review no exemption from the secret scan: the prompt and every changed or untracked file (not only untracked ones) are scanned with gitleaks' own `--ignore-gitleaks-allow`, at their own path and as a copy under a bare number that no path allowlist matches. A `-diff` or `binary` attribute, a nested `gitleaks:gitleaks:allowallow` marker (which survived the earlier marker-stripped copy) and a path that `.gitleaks.toml` or gitleaks' defaults allowlist (`package-lock.json`, `*.svg`, `go.sum`, `node_modules/`) can no longer hide a credential in the change.
 - `codex-review.sh plan <file>` refuses a path through a symlinked directory and a path when `git check-ignore` gives no clear answer, so a git-ignored file cannot be reached through a link.
+- `codex-review.sh` applies the working-tree patch from outside the review tree (`git apply --directory`), so a tracked `config`, `HEAD`, `objects/` and `refs/` can no longer make the tree a bare repository whose filter drivers run during the apply.
+- The review boundary now covers files that linters, formatters, tests and build execute, not only `.claude/` and `scripts/`: the lint hook runs your linters after every edit, and a linter config that is code runs on your machine. The README, `HOW-TO-USE.md`, `docs/rollout.md` and `TAILOR.md` say so.
 - `codex-review.sh` trusts only commits on the base branch: `high <ref>`, `release <ref>` and the plan's merge-base must be ancestors of `origin/<base>`, or of the local base when there is no remote-tracking copy, else exit 2; a tag or branch literally named `origin/<base>` is refused as ambiguous. `release` with no ref starts from the newest tag on the base branch, and plan mode refuses a local base at HEAD as high mode does.
 
 ### Upgrade notes
@@ -66,6 +68,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 - A changed file that holds an older `gitleaks:allow` line now refuses the run (exit 5); remove the marker or rotate the secret.
 - Codex sees LFS pointers and encrypted blobs, not checked-out content; an untracked file behind a filter driver (a new LFS asset or git-crypt file) is named in the report as filtered and not sent.
 - Plan paths through a symlinked directory are refused (exit 2).
+- A changed or untracked file at a path that `.gitleaks.toml` or gitleaks' defaults allowlist is now scanned: a fake secret in a changed fixture or lockfile refuses the run (exit 5). Allowlist by value (`regexes`, `stopwords`), not by path. Files the change leaves alone keep the path allowlists, so a credential already committed in a lockfile or SVG is still sent.
+- A tailored `scripts/check.sh`: prefer linter invocations that load no code from the tree (for markdownlint-cli2, the API option `noImport`); otherwise treat those config files as part of what to review on an outside branch.
+- Re-read the widened review boundary in `docs/rollout.md` (Review-only) before opening Claude Code on a branch from someone you don't fully trust.
 - With the codex extra on, the first `high` run after upgrading refuses (exit 5) until the upgraded `codex-review.sh` is on the base branch, because the script differs from the base's copy.
 
 ## [1.5] — 2026-11-09
