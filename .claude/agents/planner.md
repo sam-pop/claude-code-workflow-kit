@@ -52,6 +52,7 @@ You cannot ask the owner directly; the main session does. Decisions that belong 
 **Data**: schema and migration, or "none".
 **Undo**: rollback path, or what makes it unsafe.
 **Tests**: the cases worth having, each with the bug it catches.
+**Risks to probe**: 3–5 concrete ways this change could be wrong (a path, an input, a state), each one the reviewer can check.
 **Sequence**: numbered steps for the writer, ending with `scripts/check.sh all`.
 **Questions**: Q1 … with a recommended answer each.
 **Assumed**: the recommended answers this blueprint is built on.

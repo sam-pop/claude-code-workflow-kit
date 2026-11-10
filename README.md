@@ -410,9 +410,9 @@ All five are plain Markdown files with YAML frontmatter (four in `.claude/agents
 
 | Agent | Access | Loads `CLAUDE.md` | Job |
 |---|---|---|---|
-| **planner** | No edit tools; Bash by instruction | No | One decisive blueprint: approach, rejected alternative, risk tier, acceptance criteria, files, data, rollback path, tests, sequence, questions for the owner. |
+| **planner** | No edit tools; Bash by instruction | No | One decisive blueprint: approach, rejected alternative, risk tier, acceptance criteria, files, data, rollback path, tests, risks to probe, sequence, questions for the owner. |
 | **writer** | Read/write | Yes | Implements the blueprint, writes tests that catch real bugs, runs the checks, reports exact output and the defaults it picked. Stops with a `## STUCK:` report instead of looping. |
-| **reviewer** | No edit tools; Bash by instruction | No | Reads the diff before the plan, re-runs the checks, reports Standards and Spec findings separately with confidence scores. Lower threshold (60%) for data, security and concurrency; 85% elsewhere. |
+| **reviewer** | No edit tools; Bash by instruction | No | Reads the diff before the plan, re-runs the checks, reports Standards and Spec findings separately with confidence scores. Looks for other sites of the same bug class and answers the blueprint's risks to probe by name. Lower threshold (60%) for data, security and concurrency; 85% elsewhere. |
 | **security-auditor** | No edit tools; Bash by instruction | No | Whole-system audit (trust boundaries, authorization, tenancy, data flows, secrets, rate limiting, logging). Critical and High block a release; an unreproduced one blocks until the owner rules on it, on the record. |
 | **codex-reviewer** *(extra)* | Runs one script (read-only Codex sandbox) | No | Relays `scripts/codex-review.sh`: a Codex second opinion on the plan, on High-risk diffs and on releases. |
 

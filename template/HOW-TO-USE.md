@@ -75,7 +75,7 @@ The profile table (model/effort per agent) and the reasons for it: `docs/rollout
 What comes back:
 
 - **Writer:** files, tests and the bug each catches, each check's exit code with the last lines of its output pasted, and **Defaults I picked**, which are decisions nobody made. Read that list.
-- **Reviewer:** a re-run of the checks compared against the writer's claims, then Standards and Spec findings with confidence numbers, and a **Considered, below threshold** list so you can see what it held back.
+- **Reviewer:** a re-run of the checks compared against the writer's claims, then Standards and Spec findings with confidence numbers, a **Risks probed** section answering the blueprint's risks to probe, and a **Considered, below threshold** list so you can see what it held back.
 
 Agents run one at a time in the foreground; the kit turns off fork mode so Claude waits for each.
 
