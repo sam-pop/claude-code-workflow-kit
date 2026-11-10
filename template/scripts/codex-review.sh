@@ -56,10 +56,16 @@
 # removed lines included) for known-pattern secrets, and any finding refuses the run. A tracked file
 # that should never be tracked (.env, *.pem, *.p12, id_rsa, id_ed25519) refuses the run too.
 # Every changed or untracked file is scanned with inline `gitleaks:allow` markers ignored, at its own
-# path and under a neutral name, so neither a new marker nor a path exemption covers it. Files the
-# change leaves alone keep gitleaks' default path exemptions (lockfiles, images, vendored
-# directories), so a credential already committed there is sent; and the scan is pattern-based: text
-# in UTF-16 or in a working-tree-encoding the export re-encodes can pass.
+# path, under a neutral number and under a number plus its file name (the last two after a newline,
+# because gitleaks skips content whose first bytes look like a known binary format), so neither a
+# new marker nor a path exemption covers it. The scan is a best-effort guard against accidents, not
+# a security boundary: it is gitleaks' pattern matching. Blind spots: unprefixed secrets; text in
+# UTF-16 or in a working-tree-encoding the export re-encodes; compressed or encrypted content (a gzip
+# or zip holding a secret); files the change leaves alone keep gitleaks' default path exemptions
+# (lockfiles, images, vendored directories), so a credential already committed there is sent; and a
+# TMPDIR whose path holds such a directory (node_modules/, vendor/) switches the scan off, because
+# gitleaks matches its path allowlist against the absolute path. Keep anything Codex may not see out
+# of the repository, or leave the codex extra off.
 # Limitation: a trusted .gitleaks.toml whose `[extend] path` is relative resolves against an empty
 # directory; gitleaks then fails and the run is refused as if secrets were found (exit 5).
 # Codex flags: exec -C <dir> -m <model> -c model_reasoning_effort="<effort>" -s read-only --ephemeral
@@ -290,7 +296,7 @@ sys.exit(0 if r.startswith(t + os.sep) else 1)' "$file"; then
     echo
     echo "=== END PLAN ==="
   } >"$t/prompt.md"
-  cp -- "$t/prompt.md" "$t/scan/prompt.md" || {
+  { printf '\n' && cat -- "$t/prompt.md"; } >"$t/scan/prompt.md" || {
     echo "codex-review: cannot prepare the secret scan; not sent" >&2
     return 1
   }
@@ -464,6 +470,7 @@ if [[ "$MODE" == high ]]; then
     # GIT_WORK_TREE or GIT_INDEX_FILE is cleared because it does not make git climb: it puts git apply
     # in repository mode with that repository's config and info/attributes, so the user's own filter
     # drivers would run on the patched files. Outside any repository, git apply is a plain patch tool.
+    # apply.whitespace=nowarn keeps a user's apply.whitespace=fix from stripping the review copy.
     # A positive check first: if git still sees a repository from $tmp (for example a ceiling that a
     # character in $TMPDIR splits), nothing is sent.
     (cd "$tmp" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_CEILING_DIRECTORIES="$(dirname -- "$tmp")" \
@@ -472,7 +479,7 @@ if [[ "$MODE" == high ]]; then
       exit 1
     }
     (cd "$tmp" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_CEILING_DIRECTORIES="$(dirname -- "$tmp")" \
-      git -c core.hooksPath=/dev/null apply --directory=wt "$tmp/work.patch") \
+      git -c core.hooksPath=/dev/null -c apply.whitespace=nowarn apply --directory=wt "$tmp/work.patch") \
       || {
         echo "codex-review: could not apply the working-tree changes" >&2
         exit 1
@@ -591,28 +598,33 @@ PY
 # config or gitleaks' defaults allowlist (lockfiles, images, vendored directories), and a `-diff` or
 # `binary` attribute hides a changed file's lines from the diff. So the prompt and every changed file
 # (in the range, or in the working tree) and every untracked file are scanned with gitleaks' own
-# --ignore-gitleaks-allow, each at its own path (name-based rules still match) and as a copy named by
-# a bare number that no path allowlist matches. Files the change leaves alone keep the trusted ref's
-# markers and the path allowlists, gitleaks' defaults included.
-mkdir -p "$tmp/scan/files" "$tmp/scan/flat" "$tmp/glcwd" || {
+# --ignore-gitleaks-allow, each in three copies: at its own path (name-based rules still match, but a
+# path allowlist can too), under a bare number (no path allowlist matches) and under a bare number
+# plus its own file name (a path-scoped rule such as nuget.config or .npmrc still matches, and no
+# allowlisted directory is in the path). gitleaks skips content whose first bytes look like a known
+# binary format (%PDF, MZ, SQLite, gzip, ...), so the numbered and named copies, and the prompt copy,
+# are written after a newline; the own-path copy stays byte-identical. Files the change leaves alone
+# keep the trusted ref's markers and the path allowlists, gitleaks' defaults included.
+mkdir -p "$tmp/scan/files" "$tmp/scan/flat" "$tmp/scan/named" "$tmp/glcwd" || {
   echo "codex-review: cannot prepare the secret scan; not sent" >&2
   exit 1
 }
-cp -- "$tmp/prompt.md" "$tmp/scan/prompt.md" || {
+{ printf '\n' && cat -- "$tmp/prompt.md"; } >"$tmp/scan/prompt.md" || {
   echo "codex-review: cannot prepare the secret scan; not sent" >&2
   exit 1
 }
-# One changed or untracked path -> two copies for the scan: at its own path under $tmp/scan/files and
-# under a bare number in $tmp/scan/flat. Nothing to copy for a deleted file, a gitlink or a
-# "(symlink, not sent)" entry.
+# One changed or untracked path -> three copies for the scan: at its own path under $tmp/scan/files,
+# under a bare number in $tmp/scan/flat and as $tmp/scan/named/<n>/<file name>. Nothing to copy for a
+# deleted file, a gitlink or a "(symlink, not sent)" entry.
 n=0
 : >"$tmp/flatmap.z"
 scan_copy() {
   [[ -f "$tmp/wt/$1" ]] || return 0
   n=$((n + 1))
-  mkdir -p -- "$tmp/scan/files/$(dirname -- "$1")" \
+  mkdir -p -- "$tmp/scan/files/$(dirname -- "$1")" "$tmp/scan/named/$n" \
     && cp -- "$tmp/wt/$1" "$tmp/scan/files/$1" \
-    && cp -- "$tmp/wt/$1" "$tmp/scan/flat/$n" \
+    && { printf '\n' && cat -- "$tmp/wt/$1"; } >"$tmp/scan/flat/$n" \
+    && { printf '\n' && cat -- "$tmp/wt/$1"; } >"$tmp/scan/named/$n/${1##*/}" \
     && printf '%s\t%s\0' "$n" "$1" >>"$tmp/flatmap.z"
 }
 for list in "$tmp/changed.z" "$tmp/untracked.txt"; do
@@ -637,11 +649,11 @@ scan() { # dir [extra flag]
 }
 if ! scan "$tmp/wt" || ! scan "$tmp/scan" --ignore-gitleaks-allow; then
   echo "secrets found in what Codex would read; not sent" >&2
-  # A finding in a copy under scan/flat/<n> names only the number: say which file that is (the first 100
+  # A finding in a copy under scan/flat/<n> or scan/named/<n>/ names only the number: say which file that is (the first 100
   # entries, then a count; a long name keeps its end, with newlines and other unprintable characters made
   # printable). The map stays in $tmp; it is not part of what Codex receives.
   if [[ -s "$tmp/flatmap.z" ]]; then
-    echo "scan/flat/<n> copies, by number:" >&2
+    echo "scan/flat/<n> and scan/named/<n>/ copies, by number:" >&2
     k=0
     while IFS=$'\t' read -r -d '' num path; do
       k=$((k + 1))

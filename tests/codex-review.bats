@@ -874,8 +874,10 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   real_cp=$(command -v cp)
   mkdir -p "$BATS_TEST_TMPDIR/shim"
   printf '#!/usr/bin/env bash\nfor a in "$@"; do last=$a; done\n[[ "$last" == */scan/* ]] && exit 1\nexec "%s" "$@"\n' "$real_cp" >"$BATS_TEST_TMPDIR/shim/cp"
-  chmod +x "$BATS_TEST_TMPDIR/shim/cp"
-  # A deletion only: no changed file is copied for the scan, so only the prompt's scan copy runs cp.
+  # The prompt's scan copy is written with cat after a newline: fail that too.
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do last=$a; done\n[[ "$last" == */prompt.md ]] && exit 1\nexec "%s" "$@"\n' "$(command -v cat)" >"$BATS_TEST_TMPDIR/shim/cat"
+  chmod +x "$BATS_TEST_TMPDIR/shim/cp" "$BATS_TEST_TMPDIR/shim/cat"
+  # A deletion only: no changed file is copied for the scan, so only the prompt's scan copy runs.
   git rm -q src/app.txt
   PATH="$BATS_TEST_TMPDIR/shim:$PATH" run scripts/codex-review.sh high
   assert_failure 1
@@ -1093,4 +1095,16 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   STUB_CODEX_TREE=1 run scripts/codex-review.sh high
   assert_success
   assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three   "
+}
+
+@test "a failing write of the numbered or named scan copy refuses with exit 1 and codex is not called (H-B)" {
+  mkdir -p "$BATS_TEST_TMPDIR/shim"
+  # cat reading a file in the review tree fails; the byte-identical own-path copy (cp) still works.
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do last=$a; done\n[[ "$last" == */wt/* ]] && exit 1\nexec "%s" "$@"\n' "$(command -v cat)" >"$BATS_TEST_TMPDIR/shim/cat"
+  chmod +x "$BATS_TEST_TMPDIR/shim/cat"
+  echo "three" >>src/app.txt
+  PATH="$BATS_TEST_TMPDIR/shim:$PATH" run scripts/codex-review.sh high
+  assert_failure 1
+  assert_output --partial "cannot prepare the secret scan"
+  assert_equal "$(codex_calls)" 0
 }
