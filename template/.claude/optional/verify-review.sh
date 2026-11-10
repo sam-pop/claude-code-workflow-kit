@@ -14,8 +14,9 @@
 #             files listed only under `not read (reason):` are reported as not read
 # Exit codes: 0 complete and every quote verified, 1 issues found, 2 usage or unreadable report.
 # Environment: BASE_BRANCH.
-# Base branch as in scripts/check.sh: $BASE_BRANCH, else origin/HEAD, else main. No base: coverage
-# is not checked. Needs python3 3.8+ (standard library only). Writes nothing; the caller appends.
+# Base branch: $BASE_BRANCH, else origin/HEAD, else main. origin/<base> is used before a local <base>
+# (as in scripts/codex-review.sh; scripts/check.sh is local-first); BASE_BRANCH=refs/heads/<name>
+# picks a local branch. No base: coverage is not checked. Needs python3 3.8+ (standard library only). Writes nothing; the caller appends.
 set -uo pipefail
 [[ $# -eq 1 && -f "$1" ]] || {
   sed -n '3,3p' "$0" >&2
