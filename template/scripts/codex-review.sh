@@ -61,13 +61,19 @@
 # new marker nor a path exemption covers it. The scan is a best-effort guard against accidents, not
 # a security boundary: it is gitleaks' pattern matching. Blind spots: unprefixed secrets; text in
 # UTF-16 or in a working-tree-encoding the export re-encodes; compressed or encrypted content (a gzip
-# or zip holding a secret); files the change leaves alone keep gitleaks' default path exemptions
-# (lockfiles, images, vendored directories), so a credential already committed there is sent; and a
-# TMPDIR whose path holds such a directory (node_modules/, vendor/) switches the scan off, because
-# gitleaks matches its path allowlist against the absolute path. Keep anything Codex may not see out
-# of the repository, or leave the codex extra off.
-# Limitation: a trusted .gitleaks.toml whose `[extend] path` is relative resolves against an empty
-# directory; gitleaks then fails and the run is refused as if secrets were found (exit 5).
+# or zip holding a secret); and files the change leaves alone keep gitleaks' default path exemptions
+# (lockfiles, images, vendored directories), so a credential already committed there is sent. Keep
+# anything Codex may not see out of the repository, or leave the codex extra off.
+# gitleaks runs from inside each scanned directory, on ".", so it matches relative paths: a trusted
+# .gitleaksignore fingerprint (path:rule:line, path relative to the repo root) and a ^-anchored path
+# allowlist apply to files the change leaves alone, and a TMPDIR under node_modules/ or vendor/ no
+# longer exempts the scan copies. A canary scan comes first: a token generated at run time must be the
+# one finding of a scratch scan with the same flags and config, else exit 5 ("the secret scan is not
+# working here"). Limitation: a trusted .gitleaks.toml whose `[extend] path` is relative cannot be
+# resolved from the empty canary directory, so the run is refused by that check (exit 5).
+# Codex is started with safe.bareRepository=explicit (appended to GIT_CONFIG_COUNT entries already set),
+# so its own git does not discover a tracked config, HEAD, objects/ and refs/ as a bare repository
+# (git 2.38 or later; not verified with the real Codex CLI).
 # Codex flags: exec -C <dir> -m <model> -c model_reasoning_effort="<effort>" -s read-only --ephemeral
 # --ignore-user-config --skip-git-repo-check (the directory is not a git repo) -o <file> -
 # Submodule pointer changes are listed in the prompt, not applied (the review tree has no submodules).
@@ -93,6 +99,53 @@ gdiff() { git -c core.hooksPath=/dev/null diff --no-color --no-ext-diff --no-tex
 valid_ref() { git rev-parse --verify --quiet "$1^{commit}" >/dev/null 2>&1; }
 # Printable ASCII only, at most 40 characters, quoted: names from the tree are data, not messages.
 safe_name() { LC_ALL=C awk '{ gsub(/[^ -~]/, "?"); if (length($0) > 40) $0 = substr($0, 1, 37) "..."; print "\x27" $0 "\x27" }'; }
+
+# Codex runs its own git commands in the review tree, which a change can make look like a bare
+# repository (a tracked config, HEAD, objects/ and refs/). Telling git not to discover bare
+# repositories implicitly keeps it from reading that config. This script controls Codex's environment:
+# the entry is appended after any GIT_CONFIG_COUNT entries already set. Needs git 2.38 or later in
+# Codex's PATH; an older git ignores the key (not verified with the real CLI).
+gc_n=${GIT_CONFIG_COUNT:-0}
+[[ "$gc_n" =~ ^[0-9]+$ ]] || gc_n=0
+gc_n=$((10#$gc_n))
+CODEX_ENV=(env "GIT_CONFIG_COUNT=$((gc_n + 1))" "GIT_CONFIG_KEY_$gc_n=safe.bareRepository" "GIT_CONFIG_VALUE_$gc_n=explicit")
+
+# gitleaks on directory $1 (GL holds the common flags), run from inside it on ".", so the paths it
+# matches and reports are relative to the scanned directory: a trusted .gitleaksignore fingerprint
+# (src/a.txt:github-pat:1) and a ^-anchored path allowlist then match, and a TMPDIR whose absolute path
+# holds a default-allowlisted directory (node_modules/) no longer exempts the scan copies. A relative
+# `[extend] path` in the config resolves against that directory, not an empty one: canary_ok runs first,
+# from an empty one, so such a config fails there and the run is refused.
+gl_scan() { # dir [extra flags]
+  local d=$1
+  shift
+  (cd "$d" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir . "${GL[@]}" "$@")
+}
+
+# The scan must find a token it is meant to find: a runtime-generated GitHub-token-shaped string in a
+# scratch directory, scanned exactly as the real directories are (same flags, trusted config, markers
+# ignored). Exactly one finding, on that file, or the scan is not working here (a config that cannot be
+# loaded or that exempts it, a gitleaks that skips the path): return 1. The token never reaches a log.
+canary_ok() { # scratch dir (created)
+  local d=$1 chars=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 tok="" i
+  mkdir -p -- "$d/flat" || return 1
+  for ((i = 0; i < 36; i++)); do tok+=${chars:$((RANDOM % 62)):1}; done
+  printf '\nkey=ghp_%s\n' "$tok" >"$d/flat/canary" || return 1
+  tok=""
+  gl_scan "$d" --ignore-gitleaks-allow --report-format json --report-path "$d.report.json" >/dev/null 2>&1
+  python3 -I - "$d.report.json" <<'PY'
+import json, os, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as f:
+        r = json.load(f)
+except (OSError, ValueError):
+    sys.exit(1)
+ok = (isinstance(r, list) and len(r) == 1 and isinstance(r[0], dict)
+      and os.path.normpath(str(r[0].get("File", ""))) == os.path.join("flat", "canary"))
+sys.exit(0 if ok else 1)
+PY
+}
+CANARY_MSG="codex-review: the secret scan is not working here (it did not report its own test token: a gitleaks config that cannot be loaded or that exempts it, or a path gitleaks skips); not sent"
 
 # The one trust anchor: origin/<base> when it exists, else the local base branch (a repo with no
 # remote-tracking copy). Never derived from the command's argument. Sets ANCHOR.
@@ -280,7 +333,7 @@ sys.exit(0 if r.startswith(t + os.sep) else 1)' "$file"; then
   t="$(cd -P -- "$t" >/dev/null && pwd -P)" || return 1 # absolute: a relative TMPDIR would break the cd steps
   # shellcheck disable=SC2064  # expand $t now: it is local
   trap "rm -rf '$t'" EXIT
-  mkdir -p "$t/wt" "$t/scan" "$t/glcwd"
+  mkdir -p "$t/wt" "$t/scan"
   cp "$file" "$t/wt/plan.md" || return 1
   {
     echo "You are an independent second opinion on a software change plan (a blueprint) written by another model. A human reads your objections next to the planner's own questions; you never block the work."
@@ -302,13 +355,17 @@ sys.exit(0 if r.startswith(t + os.sep) else 1)' "$file"; then
   }
   GL=(--no-banner --redact)
   if git show "$TRUST_REF:.gitleaks.toml" >"$t/gitleaks.toml" 2>/dev/null; then GL+=(--config "$t/gitleaks.toml"); fi
+  if ! canary_ok "$t/canary"; then
+    echo "$CANARY_MSG" >&2
+    return 5
+  fi
   # The plan gets no inline-marker exemption: --ignore-gitleaks-allow also catches a nested marker.
-  if ! (cd "$t/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$t/scan" "${GL[@]}" --ignore-gitleaks-allow >&2); then
+  if ! gl_scan "$t/scan" --ignore-gitleaks-allow >&2; then
     echo "secrets found in the plan; not sent" >&2
     return 5
   fi
   out="$t/out.md"
-  ${TO[@]+"${TO[@]}" 540} codex exec -C "$t/wt" -m gpt-6.1-sol -c 'model_reasoning_effort="high"' -s read-only --ephemeral \
+  ${TO[@]+"${TO[@]}" 540} "${CODEX_ENV[@]}" codex exec -C "$t/wt" -m gpt-6.1-sol -c 'model_reasoning_effort="high"' -s read-only --ephemeral \
     --ignore-user-config --skip-git-repo-check -o "$out" - <"$t/prompt.md" >/dev/null 2>"$t/err.txt"
   rc=$?
   if ((rc != 0)); then
@@ -605,7 +662,7 @@ PY
 # binary format (%PDF, MZ, SQLite, gzip, ...), so the numbered and named copies, and the prompt copy,
 # are written after a newline; the own-path copy stays byte-identical. Files the change leaves alone
 # keep the trusted ref's markers and the path allowlists, gitleaks' defaults included.
-mkdir -p "$tmp/scan/files" "$tmp/scan/flat" "$tmp/scan/named" "$tmp/glcwd" || {
+mkdir -p "$tmp/scan/files" "$tmp/scan/flat" "$tmp/scan/named" || {
   echo "codex-review: cannot prepare the secret scan; not sent" >&2
   exit 1
 }
@@ -638,16 +695,16 @@ done
 rm -f "$tmp/wt/.gitleaks.toml" "$tmp/wt/.gitleaksignore"
 # --redact keeps secret values out of stderr, which the relay agent passes on to the transcript.
 GL=(--no-banner --redact)
-# A relative `[extend] path` in this config resolves against the empty $tmp/glcwd (see the header).
+# A relative `[extend] path` in this config fails the canary scan below, which runs from an empty directory.
 if git show "$TRUST_REF:.gitleaks.toml" >"$tmp/gitleaks.toml" 2>/dev/null; then GL+=(--config "$tmp/gitleaks.toml"); fi
 if git show "$TRUST_REF:.gitleaksignore" >"$tmp/gitleaksignore" 2>/dev/null; then
   cp "$tmp/gitleaksignore" "$tmp/wt/.gitleaksignore"
-  cp "$tmp/gitleaksignore" "$tmp/scan/.gitleaksignore"
 fi
-scan() { # dir [extra flag]
-  (cd "$tmp/glcwd" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML gitleaks dir "$1" "${GL[@]}" ${2:+"$2"} >&2)
-}
-if ! scan "$tmp/wt" || ! scan "$tmp/scan" --ignore-gitleaks-allow; then
+if ! canary_ok "$tmp/canary"; then
+  echo "$CANARY_MSG" >&2
+  exit 5
+fi
+if ! gl_scan "$tmp/wt" >&2 || ! gl_scan "$tmp/scan" --ignore-gitleaks-allow >&2; then
   echo "secrets found in what Codex would read; not sent" >&2
   # A finding in a copy under scan/flat/<n> or scan/named/<n>/ names only the number: say which file that is (the first 100
   # entries, then a count; a long name keeps its end, with newlines and other unprintable characters made
@@ -667,7 +724,7 @@ fi
 
 run_codex() { # model effort seconds
   rm -f "$tmp/out.md"
-  ${TO[@]+"${TO[@]}" "$3"} codex exec -C "$tmp/wt" -m "$1" -c "model_reasoning_effort=\"$2\"" -s read-only --ephemeral \
+  ${TO[@]+"${TO[@]}" "$3"} "${CODEX_ENV[@]}" codex exec -C "$tmp/wt" -m "$1" -c "model_reasoning_effort=\"$2\"" -s read-only --ephemeral \
     --ignore-user-config --skip-git-repo-check -o "$tmp/out.md" - <"$tmp/prompt.md" >/dev/null 2>"$tmp/err.txt"
 }
 

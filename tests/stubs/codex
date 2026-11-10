@@ -5,6 +5,8 @@
 #   STUB_CODEX_FAIL_MODEL=<model>  exit 1 with an error when -m is that model
 #   STUB_CODEX_RC=<n>              exit with n after logging (no report)
 #   STUB_CODEX_TREE=1              also copy the -C directory to $STUB_LOG/codex.<n>.tree
+# Also logs the GIT_CONFIG_* variables it was started with to $STUB_LOG/codex.<n>.env, and the exit
+# code of `git rev-parse --git-dir` run in the -C directory (as Codex's own git would) to codex.<n>.gitrc.
 log="${STUB_LOG:-/tmp}/codex"
 n=1
 while [[ -e "$log.$n.argv" ]]; do n=$((n + 1)); done
@@ -28,6 +30,11 @@ if [[ $skip == 0 ]] && ! (cd "$dir" && git rev-parse --git-dir >/dev/null 2>&1);
   echo "Not inside a trusted directory and --skip-git-repo-check was not specified." >&2
   exit 1
 fi
+env | grep -E '^GIT_CONFIG_(COUNT|KEY_|VALUE_)' | sort >"$log.$n.env"
+(
+  cd "$dir" && git rev-parse --git-dir >/dev/null 2>&1
+  echo $? >"$log.$n.gitrc"
+)
 (cd "$dir" && find . -print | sort) >"$log.$n.ls"
 [[ "${STUB_CODEX_TREE:-}" == 1 ]] && cp -R "$dir" "$log.$n.tree"
 if [[ -n "${STUB_CODEX_FAIL_MODEL:-}" && "$model" == "$STUB_CODEX_FAIL_MODEL" ]]; then

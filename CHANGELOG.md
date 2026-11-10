@@ -2,11 +2,23 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/install.sh` reads the version from the first `## [x.y]` heading below.
 
-## [Unreleased]
+## [1.7] — unreleased
 
 ### Fixed
 
+- `scripts/extras.sh` owns a hook only when its command is exactly the one the kit writes (`"${CLAUDE_PROJECT_DIR}/scripts/check-stamp.sh" hook`), under the event the kit writes it to. Before, any hook whose command merely mentioned `scripts/check-stamp.sh` counted as the kit's: `off stop-warning` deleted it, and `on stop-warning` skipped adding the kit's own.
+- `scripts/extras.sh on` and `off` check that the file being moved, not only its destination, resolves inside the repo, and `sync` checks both ends of each move; a symlinked `.claude/optional/` or `scripts/` leading outside the repo is refused and names the path.
+- `scripts/codex-review.sh` runs gitleaks from inside each scanned directory, on `.`, so the paths it matches are relative. A `.gitleaksignore` fingerprint (`src/a.txt:github-pat:1`) and a `^`-anchored path allowlist in the base's config now match a file the change leaves alone; before, gitleaks saw absolute paths under the temporary directory, so they never matched and the run was refused. The change under review still gets no exemption. The same relative paths end the blind spot for a `TMPDIR` under a default-allowlisted directory such as `node_modules/`.
+- `scripts/codex-review.sh` scans a canary first: a token generated at run time, in a scratch directory, with the same flags and the base's config. If the scan does not report exactly that token, the run is refused (exit 5, "the secret scan is not working here"), for example when the base's config cannot be loaded or exempts it. A base config with a relative `[extend] path` is still refused, now by this check.
+- `scripts/codex-review.sh` starts Codex with `safe.bareRepository=explicit` (appended to any `GIT_CONFIG_COUNT` entries in the environment), so Codex's own git does not discover a tracked `config`, `HEAD`, `objects/` and `refs/` as a bare repository. Not verified with the real Codex CLI.
+- The 1.5 note overstated the lint hook: it passes the last 40 lines of lint output (printable ASCII, 300 characters a line) so Claude can fix what lint found; the Stop warning and the review-saved message carry counts and at most three names.
 - `verify-review.sh` stopped with a Python traceback and no `### Verification` block when a finding cited a path containing a NUL byte. Such a citation is now `unverified — path outside the repository`, and control characters in a cited path print as `?`.
+
+### Upgrade notes
+
+- Codex review: the secret scan now proves it works by finding a canary GitHub token first, so a base `.gitleaks.toml` with only custom rules (no `useDefault`, no GitHub-token rule) refuses every run (exit 5); add `[extend] useDefault = true` or a GitHub-token rule.
+- A Stop hook whose command you edited by hand is no longer treated as the kit's: `extras.sh status` warns and `on stop-warning` adds the kit's own.
+- A `.gitleaksignore` or `^`-anchored allowlist in the base branch's gitleaks config now applies to the Codex review; a fingerprint written for an absolute path under the temporary directory no longer matches. Fingerprints are `path:rule:line` with `path` relative to the repo root.
 
 ## [1.6] — 2026-11-10
 

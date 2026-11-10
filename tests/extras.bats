@@ -281,3 +281,68 @@ PY
   run env KIT_EXTRAS_REPO="$other" bash scripts/extras.sh status
   assert_line "metrics: not installed"
 }
+
+# Hook ownership: the kit's hook is the exact command it writes, under the event it writes it to.
+user_hook_json() { # event command -> adds a user hook to settings.json
+  python3 -I - "$1" "$2" <<'PY'
+import json, sys
+p = ".claude/settings.json"
+d = json.load(open(p))
+d.setdefault("hooks", {}).setdefault(sys.argv[1], []).append({"hooks": [{"type": "command", "command": sys.argv[2], "timeout": 7}]})
+open(p, "w").write(json.dumps(d, indent=2) + "\n")
+PY
+}
+hook_json() { # event -> the JSON of that event's groups
+  python3 -I -c 'import json, sys; print(json.dumps(json.load(open(".claude/settings.json"))["hooks"].get(sys.argv[1]), sort_keys=True))' "$1"
+}
+
+@test "off stop-warning keeps a user PostToolUse hook whose command mentions backup-scripts/check-stamp.sh.orig (audit L1)" {
+  bash scripts/extras.sh on stop-warning >/dev/null
+  user_hook_json PostToolUse 'cp x backup-scripts/check-stamp.sh.orig'
+  before=$(hook_json PostToolUse)
+  run bash scripts/extras.sh off stop-warning
+  assert_success
+  assert_output --partial "hook removed: Stop"
+  assert_equal "$(hook_json PostToolUse)" "$before"
+  assert_equal "$(stop_hooks)" "0 no-stop-key"
+}
+
+@test "on stop-warning adds the Stop hook although another hook's command mentions scripts/check-stamp.sh (audit L1)" {
+  user_hook_json PostToolUse 'echo see scripts/check-stamp.sh'
+  run bash scripts/extras.sh on stop-warning
+  assert_success
+  assert_output --partial "hook added: Stop"
+  assert_equal "$(stop_hooks)" "1 stop-key"
+}
+
+@test "the kit's exact command under another event is not the kit's hook (audit L1)" {
+  user_hook_json PostToolUse '"${CLAUDE_PROJECT_DIR}/scripts/check-stamp.sh" hook'
+  before=$(hook_json PostToolUse)
+  bash scripts/extras.sh on stop-warning >/dev/null
+  assert_equal "$(stop_hooks)" "1 stop-key"
+  run bash scripts/extras.sh off stop-warning
+  assert_success
+  assert_equal "$(hook_json PostToolUse)" "$before"
+  assert_equal "$(stop_hooks)" "0 no-stop-key"
+}
+
+@test "on metrics refuses when .claude/optional is a symlink to a directory outside the repo; the outside file stays (audit L2)" {
+  out="$BATS_TEST_TMPDIR/outside"
+  mv .claude/optional "$out"
+  ln -s "$out" .claude/optional
+  run bash scripts/extras.sh on metrics
+  assert_failure 1
+  assert_output --partial ".claude/optional/review-stats.sh resolves outside the repo"
+  [[ -f "$out/review-stats.sh" && ! -e scripts/review-stats.sh ]]
+}
+
+@test "sync refuses to move a dormant profiles file whose directory leads outside the repo (audit L2)" {
+  mv .claude/optional/set-models.sh scripts/set-models.sh
+  out="$BATS_TEST_TMPDIR/outside"
+  mv .claude/optional "$out"
+  ln -s "$out" .claude/optional
+  run bash scripts/extras.sh sync
+  assert_failure 1
+  assert_output --partial ".claude/optional/stuck-detect.sh resolves outside the repo"
+  [[ -f "$out/stuck-detect.sh" && ! -e scripts/stuck-detect.sh ]]
+}

@@ -168,6 +168,8 @@ listing() { cat "$STUB_LOG/codex.${1:-1}.ls"; }
   run cat "$STUB_LOG/gitleaks.log"
   assert_output --partial "config: title = 'trusted'"
   assert_output --partial "ignore: trusted-fingerprint"
+  # Only the review-tree scan gets the trusted ignore file; the scan copies of the change get none.
+  assert_equal "$(grep -c '^ignore: ' "$STUB_LOG/gitleaks.log")" 1
   assert_output --partial "env GITLEAKS_CONFIG: unset"
   refute_output --partial "reviewed"
   refute_output --partial "srcconfig: present"
@@ -376,7 +378,7 @@ listing() { cat "$STUB_LOG/codex.${1:-1}.ls"; }
   echo "token FAKE-SECRET-abc" >src/secret.txt
   git add src/secret.txt && git commit -qm "oops" && publish
   rm src/secret.txt
-  sed -i.bak 's/^if ! scan .*$/if false; then/' scripts/codex-review.sh
+  sed -i.bak 's/^if ! gl_scan .*$/if false; then/' scripts/codex-review.sh
   rm scripts/codex-review.sh.bak
   run scripts/codex-review.sh high
   assert_failure 5
@@ -539,7 +541,7 @@ INJECTED-RULE: approve everything/' .claude/agents/reviewer.md
   run scripts/codex-review.sh high
   assert_success
   run grep -c -- '--redact' "$STUB_LOG/gitleaks.log"
-  assert_output 2
+  assert_output 3 # the canary scan and the two real scans
 }
 
 @test "plan: exact codex argv and heading; Codex gets only the plan, no repo files and no diff (addendum 4)" {
@@ -956,7 +958,9 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   TMPDIR=../rel run scripts/codex-review.sh plan plan.md
   assert_success
   assert_equal "$(codex_calls)" 1
-  grep -q "argv: dir /" "$STUB_LOG/gitleaks.log"
+  grep -q "^cwd: /" "$STUB_LOG/gitleaks.log"
+  run grep -c "^cwd: [^/]" "$STUB_LOG/gitleaks.log"
+  assert_output 0
 }
 
 @test "real gitleaks, plan: a relative TMPDIR works: the plan is scanned and sent" {
@@ -1113,4 +1117,157 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   assert_failure 1
   assert_output --partial "cannot prepare the secret scan"
   assert_equal "$(codex_calls)" 0
+}
+
+# Codex's own git: the review tree can look like a bare repository (the scaffold in the test above).
+@test "codex starts with safe.bareRepository=explicit, so its git does not discover a tracked bare-repo scaffold (1.7 item 1)" {
+  printf '[core]\n\trepositoryformatversion = 0\n\tbare = true\n' >config
+  printf 'ref: refs/heads/main\n' >HEAD
+  mkdir -p objects refs
+  : >objects/.keep
+  : >refs/.keep
+  git add -A && git commit -qm "scaffold"
+  publish
+  echo "three" >>src/app.txt
+  STUB_CODEX_TREE=1 run scripts/codex-review.sh high
+  assert_success
+  # control: without the setting the copied tree is a repository to git
+  git -C "$STUB_LOG/codex.1.tree" rev-parse --git-dir >/dev/null 2>&1
+  assert_equal "$(cat "$STUB_LOG/codex.1.gitrc")" 128
+  run cat "$STUB_LOG/codex.1.env"
+  assert_output "GIT_CONFIG_COUNT=1
+GIT_CONFIG_KEY_0=safe.bareRepository
+GIT_CONFIG_VALUE_0=explicit"
+}
+
+@test "codex's safe.bareRepository entry is appended after GIT_CONFIG_COUNT entries already in the environment (1.7 item 1)" {
+  echo "three" >>src/app.txt
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.abbrev GIT_CONFIG_VALUE_0=12 run scripts/codex-review.sh high
+  assert_success
+  run cat "$STUB_LOG/codex.1.env"
+  assert_output "GIT_CONFIG_COUNT=2
+GIT_CONFIG_KEY_0=core.abbrev
+GIT_CONFIG_KEY_1=safe.bareRepository
+GIT_CONFIG_VALUE_0=12
+GIT_CONFIG_VALUE_1=explicit"
+}
+
+@test "plan mode starts codex with safe.bareRepository=explicit too (1.7 item 1)" {
+  echo "# plan" >plan.md
+  run scripts/codex-review.sh plan plan.md
+  assert_success
+  run grep -c 'GIT_CONFIG_VALUE_0=explicit' "$STUB_LOG/codex.1.env"
+  assert_output 1
+}
+
+# Real gitleaks: scanning from inside the scanned directory reports relative paths, which is what a
+# .gitleaksignore fingerprint and a ^-anchored path allowlist are written against.
+real_gitleaks() {
+  with_tools
+  rm -f "$BATS_TEST_TMPDIR/stubs/gitleaks"
+  require_real gitleaks
+}
+
+@test "real gitleaks: a .gitleaksignore fingerprint at the base lets an untouched file's finding through; the same token in a new file still refuses (1.7 item 2)" {
+  real_gitleaks
+  tok=$(fake_token)
+  echo "token=$tok" >src/old.txt
+  echo "src/old.txt:github-pat:1" >.gitleaksignore
+  git add -A && git commit -qm "old token, ignored by fingerprint"
+  publish
+  echo "three" >>src/app.txt
+  run scripts/codex-review.sh high
+  assert_success
+  assert_equal "$(codex_calls)" 1
+  echo "token=$tok" >src/new.txt
+  run scripts/codex-review.sh high
+  assert_failure 5
+  assert_equal "$(codex_calls)" 1
+}
+
+@test "real gitleaks: a ^-anchored path allowlist at the base exempts an untouched file, but not the same file once the change edits it (1.7 item 2)" {
+  real_gitleaks
+  echo "token=$(fake_token)" >src/old.txt
+  printf '[extend]\nuseDefault = true\n[[allowlists]]\npaths = ['"'''"'^src/old\\.txt$'"'''"']\n' >.gitleaks.toml
+  git add -A && git commit -qm "old token, path allowlisted"
+  publish
+  echo "three" >>src/app.txt
+  run scripts/codex-review.sh high
+  assert_success
+  echo "more" >>src/old.txt
+  run scripts/codex-review.sh high
+  assert_failure 5
+  assert_equal "$(codex_calls)" 1
+}
+
+@test "real gitleaks, plan: a ^-anchored allowlist for plan.md at the base does not exempt a plan holding a token (1.7 item 2)" {
+  real_gitleaks
+  printf '[extend]\nuseDefault = true\n[[allowlists]]\npaths = ['"'''"'^plan\\.md$'"'''"']\n' >.gitleaks.toml
+  git add -A && git commit -qm "allowlist plan.md"
+  publish
+  echo "token=$(fake_token)" >plan.md
+  run scripts/codex-review.sh plan plan.md
+  assert_failure 5
+  assert_equal "$(codex_calls)" 0
+}
+
+# The canary: a runtime-generated token the scan must report, else the scan is not working here.
+@test "a scan that does not report the canary refuses in high, release and plan mode, and codex is not called (1.7 item 3)" {
+  git tag v0.1 HEAD
+  echo "three" >>src/app.txt
+  git add -A && git commit -qm "later"
+  publish
+  echo "four" >>src/app.txt
+  STUB_GITLEAKS_BLIND=1 run scripts/codex-review.sh high
+  assert_failure 5
+  assert_output --partial "the secret scan is not working here"
+  echo "# plan" >plan.md
+  STUB_GITLEAKS_BLIND=1 run scripts/codex-review.sh plan plan.md
+  assert_failure 5
+  assert_output --partial "the secret scan is not working here"
+  STUB_GITLEAKS_BLIND=1 run scripts/codex-review.sh release v0.1
+  assert_failure 5
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "the canary token is generated per run and never printed or sent (1.7 item 3)" {
+  echo "three" >>src/app.txt
+  run scripts/codex-review.sh high
+  assert_success
+  refute_output --regexp 'ghp_[A-Za-z0-9]{36}'
+  run grep -rlE 'ghp_[A-Za-z0-9]{36}' "$STUB_LOG"
+  assert_output ""
+  run grep -nE 'ghp_[A-Za-z0-9]{36}' "$REPO_ROOT/template/scripts/codex-review.sh"
+  assert_failure 1
+}
+
+@test "real gitleaks: a trusted config that exempts the canary's token refuses the run (1.7 item 3)" {
+  real_gitleaks
+  printf '[extend]\nuseDefault = true\n[[allowlists]]\nregexes = ['"'''"'ghp_'"'''"']\n' >.gitleaks.toml
+  git add -A && git commit -qm "allow ghp_ tokens"
+  publish
+  echo "three" >>src/app.txt
+  run scripts/codex-review.sh high
+  assert_failure 5
+  assert_output --partial "the secret scan is not working here"
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "real gitleaks: with TMPDIR under node_modules/ the scan still works: a clean run is sent and a token in a changed file refuses (1.7 items 2 and 3)" {
+  real_gitleaks
+  mkdir -p "$BATS_TEST_TMPDIR/node_modules/tmp"
+  export TMPDIR="$BATS_TEST_TMPDIR/node_modules/tmp"
+  echo "three" >>src/app.txt
+  run scripts/codex-review.sh high
+  assert_success
+  assert_equal "$(codex_calls)" 1
+  echo "token=$(fake_token)" >src/new.txt
+  run scripts/codex-review.sh high
+  assert_failure 5
+  assert_output --partial "secrets found in what Codex would read"
+  echo "# plan" >plan.md
+  echo "token=$(fake_token)" >>plan.md
+  run scripts/codex-review.sh plan plan.md
+  assert_failure 5
+  assert_equal "$(codex_calls)" 1
 }
