@@ -454,11 +454,15 @@ if [[ "$MODE" == high ]]; then
     exit 1
   }
   if [[ -s "$tmp/work.patch" ]]; then
-    # Run from $tmp, which holds only this script's own files, and stop discovery there: from inside the
-    # tree, a tracked config, HEAD, objects/ and refs/ would make it a bare repository whose config
-    # (filter drivers) and info/attributes git apply would read and run. Outside any repository it is
-    # a plain patch tool.
-    (cd "$tmp" && GIT_CEILING_DIRECTORIES="$tmp" git -c core.hooksPath=/dev/null apply --directory=wt "$tmp/work.patch") \
+    # Run from $tmp, which holds only this script's own files (no HEAD, objects/ or refs/), so no
+    # repository is discovered there. From inside the tree, a tracked config, HEAD, objects/ and refs/
+    # would make it a bare repository whose config (filter drivers) and info/attributes git apply would
+    # read and run. The ceiling is the parent of $tmp, because git ignores a ceiling equal to its
+    # working directory and would keep climbing into any work tree above $TMPDIR; an inherited GIT_DIR,
+    # GIT_WORK_TREE or GIT_INDEX_FILE is cleared for the same reason. Outside any repository, git apply
+    # is a plain patch tool.
+    (cd "$tmp" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_CEILING_DIRECTORIES="$(dirname -- "$tmp")" \
+      git -c core.hooksPath=/dev/null apply --directory=wt "$tmp/work.patch") \
       || {
         echo "codex-review: could not apply the working-tree changes" >&2
         exit 1
@@ -592,12 +596,14 @@ cp -- "$tmp/prompt.md" "$tmp/scan/prompt.md" || {
 # under a bare number in $tmp/scan/flat. Nothing to copy for a deleted file, a gitlink or a
 # "(symlink, not sent)" entry.
 n=0
+: >"$tmp/flatmap.z"
 scan_copy() {
   [[ -f "$tmp/wt/$1" ]] || return 0
   n=$((n + 1))
   mkdir -p -- "$tmp/scan/files/$(dirname -- "$1")" \
     && cp -- "$tmp/wt/$1" "$tmp/scan/files/$1" \
-    && cp -- "$tmp/wt/$1" "$tmp/scan/flat/$n"
+    && cp -- "$tmp/wt/$1" "$tmp/scan/flat/$n" \
+    && printf '%s\t%s\0' "$n" "$1" >>"$tmp/flatmap.z"
 }
 for list in "$tmp/changed.z" "$tmp/untracked.txt"; do
   while IFS= read -r -d '' f; do
@@ -621,6 +627,14 @@ scan() { # dir [extra flag]
 }
 if ! scan "$tmp/wt" || ! scan "$tmp/scan" --ignore-gitleaks-allow; then
   echo "secrets found in what Codex would read; not sent" >&2
+  # A finding in a copy under scan/flat/<n> names only the number: say which file that is (at most 100
+  # lines, names made printable). The map stays in $tmp; it is not part of what Codex receives.
+  if [[ -s "$tmp/flatmap.z" ]]; then
+    echo "scan/flat/<n> copies, by number:" >&2
+    while IFS=$'\t' read -r -d '' num path; do
+      printf '  flat/%s = %s\n' "$num" "$(printf '%s' "$path" | LC_ALL=C tr '\n\r' '??' | safe_name)"
+    done <"$tmp/flatmap.z" | head -n 100 >&2
+  fi
   exit 5
 fi
 

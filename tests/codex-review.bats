@@ -913,6 +913,21 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   cmp "$tree/blob.bin" blob.bin
 }
 
+@test "the working-tree patch still reaches the review tree when TMPDIR sits inside a git work tree or GIT_DIR is inherited" {
+  # git ignores a ceiling equal to its cwd, so discovery from the temp directory would climb into a
+  # repository above it; and an inherited GIT_DIR would put git apply in repository mode.
+  mkdir -p "$BATS_TEST_TMPDIR/outer/tmp"
+  git -C "$BATS_TEST_TMPDIR/outer" init -q
+  echo "three" >>src/app.txt
+  TMPDIR="$BATS_TEST_TMPDIR/outer/tmp" STUB_CODEX_TREE=1 run scripts/codex-review.sh high
+  assert_success
+  assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three"
+  rm -rf "$STUB_LOG/codex.1.tree"
+  GIT_DIR="$TARGET/.git" STUB_CODEX_TREE=1 run scripts/codex-review.sh high
+  assert_success
+  assert_equal "$(tail -n 1 "$STUB_LOG/codex.2.tree/src/app.txt")" "three"
+}
+
 @test "a nested gitleaks:gitleaks:allowallow does not exempt a changed, an untracked or a plan file" {
   nested="token FAKE-SECRET-abc gitleaks:gitleaks:allowallow"
   echo "$nested" >>src/app.txt
@@ -926,6 +941,17 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   echo "$nested" >plan.md
   run scripts/codex-review.sh plan plan.md
   assert_failure 5
+  assert_equal "$(codex_calls)" 0
+}
+
+@test "a refused scan names the file behind a scan/flat/<n> copy, with the name made printable" {
+  mkdir -p src
+  echo "ok" >src/first.txt
+  printf 'token FAKE-SECRET-abc gitleaks:gitleaks:allowallow\n' >$'src/new\ncfg.txt'
+  run scripts/codex-review.sh high
+  assert_failure 5
+  assert_output --partial "flat/1 = 'src/first.txt'"
+  assert_output --partial "flat/2 = 'src/new?cfg.txt'"
   assert_equal "$(codex_calls)" 0
 }
 

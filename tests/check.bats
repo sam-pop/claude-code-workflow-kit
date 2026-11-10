@@ -200,3 +200,22 @@ root_check_repo() {
   assert_failure 1
   assert_output --partial "files under .tools/ or node_modules/ are tracked"
 }
+
+@test "root check.sh: tracked .TOOLS/ or Node_Modules/ (other case, as on a case-insensitive checkout) fails too" {
+  root_check_repo
+  mkdir -p "$R/.TOOLS/bin"
+  printf '#!/usr/bin/env bash\necho x >"%s/ran-tracked-tool"\n' "$BATS_TEST_TMPDIR" >"$R/.TOOLS/bin/shellcheck"
+  chmod +x "$R/.TOOLS/bin/shellcheck"
+  git -C "$R" add -f .TOOLS/bin/shellcheck
+  run "$R/scripts/check.sh" lint
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+  [[ ! -e "$BATS_TEST_TMPDIR/ran-tracked-tool" ]]
+  git -C "$R" rm -q --cached -r .TOOLS
+  mkdir -p "$R/Node_Modules/.bin"
+  printf 'x\n' >"$R/Node_Modules/.bin/bats"
+  git -C "$R" add -f Node_Modules/.bin/bats
+  run "$R/scripts/check.sh" test
+  assert_failure 1
+  assert_output --partial "files under .tools/ or node_modules/ are tracked"
+}

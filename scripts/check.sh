@@ -13,8 +13,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 # check.sh runs the tools in .tools/ and node_modules/ on the maintainer's machine, so a branch that
 # tracks files there would replace them on checkout. Both directories are git-ignored; refuse before
-# any tool runs.
-if [[ -n "$(git ls-files -- .tools node_modules 2>/dev/null)" ]]; then
+# any tool runs. The match ignores case: on a case-insensitive checkout (macOS) .TOOLS is .tools.
+if [[ -n "$(git ls-files -- ':(icase).tools' ':(icase)node_modules' 2>/dev/null)" ]]; then
   echo "FAIL: files under .tools/ or node_modules/ are tracked; checking out such a branch replaces the tools check.sh runs" >&2
   exit 1
 fi
@@ -39,11 +39,13 @@ export PATH
 BATS="$PWD/node_modules/.bin/bats"
 MDLINT="$PWD/node_modules/.bin/markdownlint-cli2"
 MDLINT_JS="$PWD/node_modules/markdownlint-cli2/markdownlint-cli2.mjs"
-# markdownlint-cli2 loads JavaScript named by a .markdownlint-cli2.cjs/.mjs, a .markdownlint.cjs, or
-# customRules, markdownItPlugins, outputFormatters and extends entries in any config file in the tree
-# it lints, so a linted branch could run code here. Its API option noImport switches all module
-# loading off and keeps the JSON/YAML rules (the root .markdownlint-cli2.jsonc); the CLI has no flag.
-# A node error is a lint failure, never a pass.
+# markdownlint-cli2 loads JavaScript named by a .markdownlint-cli2.cjs/.mjs, a .markdownlint.cjs/.mjs,
+# or customRules, markdownItPlugins and outputFormatters entries in any config file in the tree it
+# lints, so a linted branch could run code here. Its API option noImport switches all module loading
+# off and keeps the JSON/YAML rules (the root .markdownlint-cli2.jsonc); the CLI has no flag. A node
+# error is a lint failure, never a pass. Known non-code residual (1.7): `extends` resolves a path and
+# reads it as data, so it can point at any readable file, and a parse error can echo lines of it into
+# the lint output.
 mdlint() {
   node --input-type=module -e 'const {main}=await import(process.argv[1]); try { process.exitCode = await main({argv: process.argv.slice(2), logMessage: console.log, logError: console.error, noImport: true}); } catch (e) { console.error(e); process.exitCode = 2; }' "$MDLINT_JS" "$@"
 }
