@@ -915,14 +915,13 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
 
 @test "the working-tree patch still reaches the review tree when TMPDIR sits inside a git work tree" {
   # git ignores a ceiling equal to its cwd, so discovery from the temp directory would climb into a
-  # repository above it; and an inherited GIT_DIR would put git apply in repository mode.
+  # repository above it.
   mkdir -p "$BATS_TEST_TMPDIR/outer/tmp"
   git -C "$BATS_TEST_TMPDIR/outer" init -q
   echo "three" >>src/app.txt
   TMPDIR="$BATS_TEST_TMPDIR/outer/tmp" STUB_CODEX_TREE=1 run scripts/codex-review.sh high
   assert_success
   assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three"
-  rm -rf "$STUB_LOG/codex.1.tree"
 }
 
 @test "a git repository visible from the temp dir (a ':' in TMPDIR splits the ceiling) refuses with exit 1 and codex is not called" {
@@ -941,6 +940,17 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   TMPDIR=../rel STUB_CODEX_TREE=1 run scripts/codex-review.sh high
   assert_success
   assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three"
+}
+
+@test "real gitleaks, plan: a relative TMPDIR works: the plan is scanned and sent" {
+  with_tools
+  rm -f "$BATS_TEST_TMPDIR/stubs/gitleaks"
+  require_real gitleaks
+  mkdir -p "$BATS_TEST_TMPDIR/rel"
+  echo "# plan" >plan.md
+  TMPDIR=../rel run scripts/codex-review.sh plan plan.md
+  assert_success
+  assert_equal "$(codex_calls)" 1
 }
 
 @test "a refused scan keeps the end of a long path in the numbered-copy map and counts entries past 100" {

@@ -271,6 +271,7 @@ sys.exit(0 if r.startswith(t + os.sep) else 1)' "$file"; then
     return 4
   fi
   t="$(mktemp -d)" || return 1
+  t="$(cd "$t" && pwd -P)" || return 1 # absolute: a relative TMPDIR would break the cd steps
   # shellcheck disable=SC2064  # expand $t now: it is local
   trap "rm -rf '$t'" EXIT
   mkdir -p "$t/wt" "$t/scan" "$t/glcwd"

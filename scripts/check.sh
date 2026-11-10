@@ -13,10 +13,11 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 # check.sh runs the tools in .tools/ and node_modules/ on the maintainer's machine, so a branch that
 # tracks files there would replace them on checkout. Both directories are git-ignored; refuse before
-# any tool runs. The match ignores case (on a case-insensitive checkout, macOS, .TOOLS is .tools) and
-# reads the plain file list, not a pathspec, so GIT_LITERAL_PATHSPECS cannot switch it off. A failing
-# git ls-files is a failure too (pipefail), never a pass.
-if ! n=$(git ls-files -z | LC_ALL=C tr '\0' '\n' | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C awk '/^(\.tools|node_modules)\//{n++} END{print n+0}'); then
+# any tool runs. The match ignores case (on a case-insensitive checkout, macOS, .TOOLS is .tools),
+# counts the entry itself (a tracked symlink named node_modules replaces the directory on checkout)
+# and reads the plain file list, not a pathspec, so GIT_LITERAL_PATHSPECS cannot switch it off.
+# A failing git ls-files is a failure too (pipefail), never a pass.
+if ! n=$(git ls-files -z | LC_ALL=C tr '\0' '\n' | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C awk '/^(\.tools|node_modules)(\/|$)/{n++} END{print n+0}'); then
   echo "FAIL: git ls-files failed; cannot tell whether .tools/ or node_modules/ are tracked" >&2
   exit 1
 fi

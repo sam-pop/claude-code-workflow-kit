@@ -230,6 +230,22 @@ root_check_repo() {
   assert_output --partial "files under .tools/ or node_modules/ are tracked"
 }
 
+@test "root check.sh: a tracked node_modules or .tools entry itself (a symlink) fails the guard" {
+  # Checkout replaces the git-ignored directory with the branch's symlink, and check.sh then runs the
+  # tools the link points at.
+  root_check_repo
+  mkdir -p "$R/evil"
+  for name in node_modules .tools .TOOLS; do
+    ln -s evil "$R/$name"
+    git -C "$R" add -f "$name"
+    run "$R/scripts/check.sh" build
+    assert_failure 1
+    assert_output --partial "files under .tools/ or node_modules/ are tracked"
+    git -C "$R" rm -q --cached "$name"
+    rm "$R/$name"
+  done
+}
+
 @test "root check.sh: a failing git ls-files fails the guard closed" {
   export KIT_STUCK_INNER=1
   mkdir -p "$BATS_TEST_TMPDIR/nogit/scripts"
