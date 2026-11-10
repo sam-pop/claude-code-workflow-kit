@@ -926,14 +926,20 @@ $(sed -n 14p "$STUB_LOG/codex.1.argv")
   assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three"
 }
 
-@test "a git repository visible from the temp dir (a ':' in TMPDIR splits the ceiling) refuses with exit 1 and codex is not called" {
+@test "a ':' in TMPDIR (it splits the ceiling) never drops the working-tree edit: the run refuses (exit 1) or the edit arrives" {
+  # Whether git then finds the repository above depends on the platform's git (Linux git does, the
+  # macOS runner's does not); either way the edit must not vanish silently from the review tree.
   mkdir -p "$BATS_TEST_TMPDIR/a:b/tmp"
   git -C "$BATS_TEST_TMPDIR/a:b" init -q
   echo "three" >>src/app.txt
-  TMPDIR="$BATS_TEST_TMPDIR/a:b/tmp" run scripts/codex-review.sh high
-  assert_failure 1
-  assert_output --partial "a git repository is visible from the temp dir"
-  assert_equal "$(codex_calls)" 0
+  TMPDIR="$BATS_TEST_TMPDIR/a:b/tmp" STUB_CODEX_TREE=1 run scripts/codex-review.sh high
+  if [[ $status -eq 0 ]]; then
+    assert_equal "$(tail -n 1 "$STUB_LOG/codex.1.tree/src/app.txt")" "three"
+  else
+    assert_failure 1
+    assert_output --partial "a git repository is visible from the temp dir"
+    assert_equal "$(codex_calls)" 0
+  fi
 }
 
 @test "a relative TMPDIR works: the review tree is built and the working-tree edit arrives" {
