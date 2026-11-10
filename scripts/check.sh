@@ -49,11 +49,15 @@ MDLINT_JS="$PWD/node_modules/markdownlint-cli2/markdownlint-cli2.mjs"
 # markdownlint-cli2 loads JavaScript named by a .markdownlint-cli2.cjs/.mjs, a .markdownlint.cjs/.mjs,
 # or customRules, markdownItPlugins and outputFormatters entries in any config file in the tree it
 # lints, so a linted branch could run code here. Its API option noImport switches all module loading
-# off and keeps the JSON/YAML rules (the root .markdownlint-cli2.jsonc); the CLI has no flag. A node
-# error is a lint failure, never a pass. Not handled: `extends` resolves a path and reads it as data,
-# so a config can name any readable file and a parse error can echo its lines into the lint output.
+# off and keeps the JSON/YAML rules (the root .markdownlint-cli2.jsonc); the CLI has no flag. The same
+# config can also write: "fix": true rewrites every linted file, and "globs" adds files, absolute paths
+# outside the repo included, to that set. optionsOverride {fix: false} beats any config file, and
+# noGlobs ignores the "globs" setting, so only the files named on the command line are read, never
+# written. A node error is a lint failure, never a pass. Not handled: `extends` resolves a path and
+# reads it as data, so a config can name any readable file and a parse error can echo its lines into
+# the lint output.
 mdlint() {
-  node --input-type=module -e 'const {main}=await import(process.argv[1]); try { process.exitCode = await main({argv: process.argv.slice(2), logMessage: console.log, logError: console.error, noImport: true}); } catch (e) { console.error(e); process.exitCode = 2; }' "$MDLINT_JS" "$@"
+  node --input-type=module -e 'const {main}=await import(process.argv[1]); try { process.exitCode = await main({argv: process.argv.slice(2), logMessage: console.log, logError: console.error, noImport: true, noGlobs: true, optionsOverride: {fix: false}}); } catch (e) { console.error(e); process.exitCode = 2; }' "$MDLINT_JS" "$@"
 }
 need() { # tool hint
   [[ "$1" == */* ]] && [[ -x "$1" ]] && return 0
@@ -90,13 +94,18 @@ shell_files() { grep -E '\.(sh|bash|bats)$|^tests/stubs/[^/]+$' | while IFS= rea
 md_files() { grep -E '\.md$' | grep -vE '^docs/research/|^docs/reviews/[^/]*-[^/]*\.md$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
 workflow_files() { grep -E '(^|/)\.github/workflows/[^/]+\.ya?ml$' | while IFS= read -r f; do [[ -f "$f" ]] && echo "$f"; done; }
 
+# Every path handed to a linter starts with ./, so a tracked file named like an option
+# (-shellcheck=<exe> for actionlint, --preprocess=<exe> for lychee) is read as a file name. lychee also
+# runs with --config /dev/null: it would otherwise load a lychee.toml from the tree, whose `preprocess`
+# command it runs on every file. actionlint's .github/actionlint.yaml and shellcheck's .shellcheckrc
+# cannot name an executable; both tools take theirs from PATH.
 lint_files() { # reads paths on stdin
   local rc=0 list sh=() md=() mdl=() wf=() f
   list=$(cat)
-  while IFS= read -r f; do [[ -n "$f" ]] && sh+=("$f"); done < <(shell_files <<<"$list")
-  while IFS= read -r f; do [[ -n "$f" ]] && md+=("$f"); done < <(md_files <<<"$list")
-  while IFS= read -r f; do [[ -n "$f" ]] && mdl+=("$f"); done < <(md_files <<<"$list") # the same set: saved reports are left out
-  while IFS= read -r f; do [[ -n "$f" ]] && wf+=("$f"); done < <(workflow_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && sh+=("./$f"); done < <(shell_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && md+=("./$f"); done < <(md_files <<<"$list")
+  while IFS= read -r f; do [[ -n "$f" ]] && mdl+=("./$f"); done < <(md_files <<<"$list") # the same set: saved reports are left out
+  while IFS= read -r f; do [[ -n "$f" ]] && wf+=("./$f"); done < <(workflow_files <<<"$list")
   if ((${#sh[@]})); then
     if need shellcheck "$TOOLS_HINT"; then shellcheck "${sh[@]}" || rc=1; else rc=1; fi
     if need shfmt "$TOOLS_HINT"; then shfmt -d "${sh[@]}" || rc=1; else rc=1; fi
@@ -108,7 +117,7 @@ lint_files() { # reads paths on stdin
     }; else rc=1; fi
   fi
   if ((${#mdl[@]})); then
-    if need lychee "$TOOLS_HINT"; then lychee --offline --include-fragments --no-progress "${mdl[@]}" >"$TMP_LINT" 2>&1 || {
+    if need lychee "$TOOLS_HINT"; then lychee --config /dev/null --offline --include-fragments --no-progress "${mdl[@]}" >"$TMP_LINT" 2>&1 || {
       cat "$TMP_LINT" >&2
       rc=1
     }; else rc=1; fi
