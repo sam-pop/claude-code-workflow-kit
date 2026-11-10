@@ -105,7 +105,9 @@ safe_name() { LC_ALL=C awk '{ gsub(/[^ -~]/, "?"); if (length($0) > 40) $0 = sub
 # repositories implicitly keeps it from reading that config. This script controls Codex's environment:
 # the entry is appended after any GIT_CONFIG_COUNT entries already set. Needs git 2.38 or later in
 # Codex's PATH; an older git ignores the key (not verified with the real CLI).
-gc_n=$((10#${GIT_CONFIG_COUNT:-0})) 2>/dev/null || gc_n=0
+gc_n=${GIT_CONFIG_COUNT:-0}
+[[ "$gc_n" =~ ^[0-9]+$ ]] || gc_n=0
+gc_n=$((10#$gc_n))
 CODEX_ENV=(env "GIT_CONFIG_COUNT=$((gc_n + 1))" "GIT_CONFIG_KEY_$gc_n=safe.bareRepository" "GIT_CONFIG_VALUE_$gc_n=explicit")
 
 # gitleaks on directory $1 (GL holds the common flags), run from inside it on ".", so the paths it
@@ -697,7 +699,6 @@ GL=(--no-banner --redact)
 if git show "$TRUST_REF:.gitleaks.toml" >"$tmp/gitleaks.toml" 2>/dev/null; then GL+=(--config "$tmp/gitleaks.toml"); fi
 if git show "$TRUST_REF:.gitleaksignore" >"$tmp/gitleaksignore" 2>/dev/null; then
   cp "$tmp/gitleaksignore" "$tmp/wt/.gitleaksignore"
-  cp "$tmp/gitleaksignore" "$tmp/scan/.gitleaksignore"
 fi
 if ! canary_ok "$tmp/canary"; then
   echo "$CANARY_MSG" >&2

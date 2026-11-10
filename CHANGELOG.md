@@ -15,6 +15,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 
 ### Upgrade notes
 
+- Codex review: the secret scan now proves it works by finding a canary GitHub token first, so a base `.gitleaks.toml` with only custom rules (no `useDefault`, no GitHub-token rule) refuses every run (exit 5); add `[extend] useDefault = true` or a GitHub-token rule.
+
 - A Stop hook whose command you edited by hand is no longer treated as the kit's: `extras.sh status` warns and `on stop-warning` adds the kit's own.
 - A `.gitleaksignore` or `^`-anchored allowlist in the base branch's gitleaks config now applies to the Codex review; a fingerprint written for an absolute path under the temporary directory no longer matches. Fingerprints are `path:rule:line` with `path` relative to the repo root.
 

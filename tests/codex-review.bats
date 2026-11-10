@@ -168,6 +168,8 @@ listing() { cat "$STUB_LOG/codex.${1:-1}.ls"; }
   run cat "$STUB_LOG/gitleaks.log"
   assert_output --partial "config: title = 'trusted'"
   assert_output --partial "ignore: trusted-fingerprint"
+  # Only the review-tree scan gets the trusted ignore file; the scan copies of the change get none.
+  assert_equal "$(grep -c '^ignore: ' "$STUB_LOG/gitleaks.log")" 1
   assert_output --partial "env GITLEAKS_CONFIG: unset"
   refute_output --partial "reviewed"
   refute_output --partial "srcconfig: present"
