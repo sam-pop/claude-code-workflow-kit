@@ -72,7 +72,7 @@ Switching moves files and changes only the kit's own hook entry in `.claude/sett
   5. A changed, deleted or untracked file named like a secrets file (`.env`, `*.pem`, `*.p12`, `id_rsa`, `id_ed25519`) refuses the run (exit 5).
   6. A tracked file behind a filter driver (git-crypt, LFS) appears as git stores it, never as plaintext (no textconv, no external diff). Untracked filtered files, symlinks, directories and binaries are named, not sent.
   7. The run refuses (exit 5) when `scripts/codex-review.sh` or `codex-reviewer.md` differ from the merge-base; review that change first.
-  8. The checklist and `docs/conventions.md` come from the merge-base, not from the working tree.
+  8. The checklist and `docs/conventions.md` come from the merge-base, not from the working tree; if the base has no `reviewer.md`, the working-tree copy is used and the report header says so.
 
   Blind spots (documented, not fixed in code):
   - Unprefixed secrets (a bare password) pass.
@@ -82,6 +82,8 @@ Switching moves files and changes only the kit's own hook entry in `.claude/sett
   - A permissive base `.gitleaks.toml` (an allow-all path or regex) is trusted.
   - Without `origin/<base>`, anything committed on the local base is trusted.
   - Codex's sandbox limits writes, not reads.
+  - An uncommitted `.gitattributes` edit that drops a filter (git-crypt) on an unlocked repo puts that file's plaintext in the diff.
+  - A `TMPDIR` inside the repo and not git-ignored puts the script's own temporary files in the diff as untracked files.
 - **Reports from another transport.** A Codex report that did not come from `scripts/codex-review.sh` is saved as `docs/reviews/<date>-<time>-<sha>-codex.md` starting with `## Codex review:`; with verify-review on, run `scripts/verify-review.sh <file>` and append its output.
 - **Unverified with the real CLI.** The script has not been run against the real Codex CLI, and the codex-reviewer's frontmatter `PreToolUse` guard has been tested by script, not observed firing in a live session. Run `scripts/codex-review.sh high` and `plan` once with the real CLI before relying on it.
 
