@@ -5,7 +5,7 @@ Status: ADOPTED. This is the one file the planner, writer and reviewer cite. Eve
 ## Architecture
 
 - `template/` is the product: exactly what `scripts/install.sh` installs into a target, at the same paths. Edit there first.
-- The root is an install of `template/` tailored to this repo (dogfood copies), plus maintainer-only files: `scripts/install.sh`, `scripts/kit-upgrade-prompt.md`, `scripts/tools.sh`, `tests/`, `docs/research/`, `README.md`, `CHANGELOG.md`. After a `template/` edit, run `scripts/install.sh --upgrade .` and merge any `.kit` file into the root copy.
+- The root is an install of `template/` tailored to this repo (dogfood copies), plus maintainer-only files: `scripts/install.sh`, `scripts/kit-upgrade-prompt.md`, `scripts/tools.sh`, `tests/`, `docs/research/`, `docs/example-review.md`, `README.md`, `SECURITY.md`, `CHANGELOG.md`. After a `template/` edit, run `scripts/install.sh --upgrade .` and merge any `.kit` file into the root copy.
 - Hooks in `.claude/settings.json` call scripts in `scripts/`; the logic lives in the script, never inline in the JSON.
 - A script finds the repo by its own location (`cd "$(dirname "$0")/.."`) or by `CLAUDE_PROJECT_DIR` for hooks, never by the caller's working directory.
 - `scripts/install.sh` never writes inside the kit: it works from a read-only copy or one without `.git`.
