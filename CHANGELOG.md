@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 - The prompt is scanned once, from its own directory, with inline `gitleaks:allow` markers ignored and the base's `.gitleaks.toml`. A changed, deleted or untracked name matching a secrets file (`.env`, `*.pem`, `*.p12`, `id_rsa`, `id_ed25519`) refuses the run, as before.
 - Release reviews run on `gpt-6.1-sol` at `high`, one call under 540 s; `gpt-6-astra` and its `gpt-6.1-sol`/`xhigh` fallback are gone.
 - `docs/rollout.md`, codex: the 3.8 KB Egress paragraph is replaced by eight guarantees, each with a named test, and a one-line-each list of blind spots.
+- `README.md` is shorter (599 to 449 lines): the sequence and improvement-loop diagrams, the vendor comparison table and the long upgrade paragraphs are gone (the detail is in `template/HOW-TO-USE.md` and `docs/research/`), the sample reviewer report moved to `docs/example-review.md`, and the security section is four bullets and a link to the new root `SECURITY.md` (what the kit guards, the Codex summary, the scanner-findings policy, how to report a vulnerability). Neither file is installed.
 - Rule: a finding whose only effect is a secret passing the gitleaks pre-scan gets a line in the blind-spot list, not code; code changes only when a documented guarantee is false (`docs/decisions.md`, `docs/conventions.md`).
 
 ### Removed
