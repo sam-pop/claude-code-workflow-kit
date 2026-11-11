@@ -2,6 +2,35 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/install.sh` reads the version from the first `## [x.y]` heading below.
 
+## [1.8] — unreleased
+
+### Changed
+
+- `scripts/codex-review.sh` sends Codex one prompt and nothing else: the diff with 20 lines of context (new untracked text files as added-file diffs, binaries named by git's "Binary files differ" line, untracked symlinks, directories and filtered files named only), the reviewer checklist and `docs/conventions.md` from the base branch. Codex starts in an empty directory; it no longer receives a copy of the repository. The script is about 40% shorter, with the same interface, exit-code meanings and report headings.
+- The prompt is scanned once, from its own directory, with inline `gitleaks:allow` markers ignored and the base's `.gitleaks.toml`. A changed, deleted or untracked name matching a secrets file (`.env`, `*.pem`, `*.p12`, `id_rsa`, `id_ed25519`) refuses the run, as before.
+- Release reviews run on `gpt-6.1-sol` at `high`, one call under 540 s; `gpt-6-astra` and its `gpt-6.1-sol`/`xhigh` fallback are gone.
+- `docs/rollout.md`, codex: the 3.8 KB Egress paragraph is replaced by eight guarantees, each with a named test, and a one-line-each list of blind spots.
+- Rule: a finding whose only effect is a secret passing the gitleaks pre-scan gets a line in the blind-spot list, not code; code changes only when a documented guarantee is false (`docs/decisions.md`, `docs/conventions.md`).
+
+### Removed
+
+- The tree export and everything it needed: the temporary index, the filter-driver smudge switch-off, the working-tree patch apply, the submodule pointer listing, symlink, `.codex/` and `AGENTS.md` handling, the three scan copies per file, the canary, `safe.bareRepository`, the `origin/<base>` ambiguity check and the two "local base at HEAD" refusals.
+
+### Fixed
+
+- A base `.gitleaks.toml` that path-allowlists `.*\.md$` exempted the prompt, which was scanned as `prompt.md`: in high mode the removed lines of the diff, and in plan mode the whole plan, went unscanned. The prompt is now scanned under a neutral name.
+
+### Upgrade notes
+
+- Codex now receives the diff only (20 lines of context), not a copy of the repository. New untracked files go as added-file diffs; binaries are named only.
+- `.gitleaksignore`, path allowlists and inline markers do not apply to the Codex scan. To silence a false positive, use a `regexes` or `stopwords` allowlist in the base branch's `.gitleaks.toml`.
+- The canary is gone, so a base `.gitleaks.toml` with only custom rules works again; this reverses the 1.7 note. A config gitleaks cannot load (for example a relative `[extend] path`) still refuses the run, with exit 5.
+- `high <ref>` and `release <ref>` accept any ref; the gitleaks config, checklist and conventions always come from the merge-base of the base branch and `HEAD`.
+- Reviewing uncommitted work on a local base with no remote is no longer refused (the committed local base is trusted; see the blind spots in `docs/rollout.md`).
+- A plan path behind a symlinked directory exits 5 (git cannot clear it), not 2. A plan named like a secrets file is no longer refused by name when it is a `*.md` file; the agent's guard still denies those names.
+- A tailored `codex-review.sh`: take the kit's copy and re-apply your change. The run refuses until the upgrade is on the base branch, as before.
+- Release reviews no longer use Astra; nothing to change unless you pinned it.
+
 ## [1.7] — 2026-11-10
 
 ### Added

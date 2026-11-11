@@ -39,7 +39,7 @@ Walk each area. Cite `file:line` for every finding.
 | **Rate limiting and abuse** | Auth endpoints, OTP/code flows, expensive endpoints, signup, password or email change. Lockout and enumeration. |
 | **Logging and errors** | Personal data, tokens or secrets in logs or error responses. Stack traces reaching clients. |
 | **Dependencies and build** | Output of the dependency audit; pinned versions; CI secrets scope; what the deploy artifact contains. |
-| **Hooks and scripts executed in target repos** | What each hook and script runs with the user's permissions; whether input from hook JSON, git config, file names or diffs can change a command; that the installer never overwrites a tailored file or writes outside the target; what `codex-review.sh` sends out and that its secret pre-scan cannot be disabled by the change under review. |
+| **Hooks and scripts executed in target repos** | What each hook and script runs with the user's permissions; whether input from hook JSON, git config, file names or diffs can change a command; that the installer never overwrites a tailored file or writes outside the target; what `codex-review.sh` sends out and that its secret pre-scan cannot be disabled by the change under review. A finding whose only effect is a secret passing that pre-scan belongs in the blind-spot list in `docs/rollout.md` (Extras, codex), not in code, unless a documented guarantee there is false; one audit and one re-check of its fixes per release. |
 
 ## Standard
 
