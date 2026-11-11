@@ -14,10 +14,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 
 ### Removed
 
+- Two extras are retired. `stop-warning` (`scripts/check-stamp.sh`, the `Stop` hook and the two stamp lines in `scripts/check.sh`) and `stuck-detect.sh` (half of `profiles`: the `same failure N times` counter that wrapped every `check.sh` run) are no longer in the kit. `profiles` stays, with `set-models.sh`. The writer's first stop rule is now the plain one, the same check failing 3 times with the same error. Evidence in `docs/decisions.md`.
+- After this every extra is exactly one file, so `scripts/extras.sh` loses `sync`, its hook editing and its `check.sh` line warnings (427 to 164 lines); nothing in the kit edits `.claude/settings.json` or `scripts/check.sh` any more, and `scripts/install.sh --upgrade` no longer runs `extras.sh sync`. `extras.sh on stop-warning` prints that the extra was retired in 1.8 and exits 1; `off stop-warning` prints it and exits 0. `KIT_STUCK_INNER` is gone.
 - The tree export and everything it needed: the temporary index, the filter-driver smudge switch-off, the working-tree patch apply, the submodule pointer listing, symlink, `.codex/` and `AGENTS.md` handling, the three scan copies per file, the canary, `safe.bareRepository`, the `origin/<base>` ambiguity check and the two "local base at HEAD" refusals.
 
 ### Fixed
 
+- `scripts/install.sh --upgrade` listed a retired extra file at its dormant path (`.claude/optional/<file>`) even when the repo had it on, at `scripts/<file>` or `.claude/agents/<file>`; it now lists the path where the file is.
 - A base `.gitleaks.toml` that path-allowlists `.*\.md$` exempted the prompt, which was scanned as `prompt.md`: in high mode the removed lines of the diff, and in plan mode the whole plan, went unscanned. The prompt is now scanned under a neutral name.
 
 ### Upgrade notes
@@ -30,6 +33,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 - A plan path behind a symlinked directory exits 5 (git cannot clear it), not 2. A plan named like a secrets file is no longer refused by name when it is a `*.md` file; the agent's guard still denies those names.
 - A tailored `codex-review.sh`: take the kit's copy and re-apply your change. The run refuses until the upgrade is on the base branch, as before.
 - Release reviews no longer use Astra; nothing to change unless you pinned it.
+- `stop-warning` and `stuck-detect.sh` are retired, not deleted: an upgrade lists `scripts/check-stamp.sh` and `scripts/stuck-detect.sh` (or their `.claude/optional/` copies, when the extra was off) as retired, leaves the files where they are, and leaves a tailored `.claude/settings.json` alone. An untailored `scripts/check.sh` is replaced, and a clean three-way merge of a tailored one drops the stamp lines and the `stuck-detect.sh` line, because they are gone from the kit's copy. After that a `Stop` hook you kept goes silent by its own design (it only warns when a recorded passing run exists), which is harmless. You choose one of two ways:
+  - Keep them as your own: keep `scripts/check-stamp.sh`, the `Stop` hook and the two stamp lines in `check.sh` (`t=$(bash scripts/check-stamp.sh tree 2>/dev/null)` before `lint`, `[[ $rc -eq 0 && -n "$t" ]] && bash scripts/check-stamp.sh record "$t"` after `doctor`); for the counter, keep `scripts/stuck-detect.sh` and `[[ -z "${KIT_STUCK_INNER:-}" && -f scripts/stuck-detect.sh ]] && exec bash scripts/stuck-detect.sh "$@"` right after the `cd`. Nothing else in the kit knows about them.
+  - Remove them: delete `scripts/check-stamp.sh` and `scripts/stuck-detect.sh`, the `Stop` entry whose command is `"${CLAUDE_PROJECT_DIR}/scripts/check-stamp.sh" hook` in `.claude/settings.json`, and any stamp or stuck-detect line left in `check.sh`. Never delete the script and keep the hook: every turn would end with a (non-blocking) hook error.
+- An untailored `.claude/settings.json` that carried the `Stop` hook (a 1.5 repo, or any repo whose `settings.json` still equals the kit's copy from the version it was installed from) is replaced by the kit's copy, which has none; `scripts/check-stamp.sh` stays on disk, unused.
+- `scripts/extras.sh sync` is gone, and `extras.sh status` no longer warns about hooks or `check.sh` lines. Run `scripts/extras.sh status` after the upgrade and record the extras you use in `docs/decisions.md`.
 
 ## [1.7] — 2026-11-10
 

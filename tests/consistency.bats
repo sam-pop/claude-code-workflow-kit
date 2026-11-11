@@ -173,12 +173,12 @@ PY
 }
 
 @test "every extra's file in extras.sh exists in template/.claude/optional/, and nothing else is there" {
-  listed=$(sed -n '/^files_of() {/,/^}/p' template/scripts/extras.sh | grep -oE '[a-z-]+\.(sh|md)' | sort)
+  listed=$(sed -n '/^file_of() {/,/^}/p' template/scripts/extras.sh | grep -oE '[a-z-]+\.(sh|md)' | sort)
   [[ -n "$listed" ]]
   assert_equal "$(cd template/.claude/optional && find . -type f | sed 's#^\./##' | sort)" "$listed"
   names=$(sed -n 's/^EXTRAS="\(.*\)"$/\1/p' template/scripts/extras.sh)
   for x in $names; do
-    sed -n '/^files_of() {/,/^}/p' template/scripts/extras.sh | grep -qE "^ +$x\)" || fail "$x has no files"
+    sed -n '/^file_of() {/,/^}/p' template/scripts/extras.sh | grep -qE "^ +$x\)" || fail "$x has no files"
   done
 }
 

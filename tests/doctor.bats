@@ -120,38 +120,13 @@ fails() { grep -c '^FAIL:' <<<"$output" || true; }
   assert_output --partial "warn: upgrade merge not finished"
 }
 
-@test "warns when stop-warning is on and a tailored check.sh does not run check-stamp record, even if a comment names it (Opus 50)" {
-  tailor
-  extras_on stop-warning
-  sed -i.bak '/check-stamp\.sh record/d' scripts/check.sh && rm -f scripts/check.sh.bak
-  grep -q 'check-stamp' scripts/check.sh
-  run bash scripts/doctor.sh
-  assert_success
-  assert_output --partial "warn: stop-warning is on but scripts/check.sh does not run scripts/check-stamp.sh record"
-}
-
-@test "no check-stamp warning while stop-warning is off, even without the stamp lines" {
-  tailor
-  sed -i.bak '/check-stamp\.sh record/d' scripts/check.sh && rm -f scripts/check.sh.bak
-  run bash scripts/doctor.sh
-  assert_success
-  refute_output --partial "check-stamp"
-}
-
 @test "a half-enabled extra is a warning, not a FAIL" {
   tailor
-  extras_on stop-warning
-  python3 - .claude/settings.json <<'PY2'
-import json, sys
-p = sys.argv[1]
-d = json.load(open(p))
-del d["hooks"]["Stop"]
-open(p, "w").write(json.dumps(d, indent=2) + "\n")
-PY2
+  cp .claude/optional/verify-review.sh scripts/verify-review.sh
   run bash scripts/doctor.sh
   assert_success
   assert_equal "$(fails)" 0
-  assert_output --partial "warn: stop-warning is on but .claude/settings.json has no Stop hook for scripts/check-stamp.sh"
+  assert_output --partial "warn: verify-review: both .claude/optional/verify-review.sh and scripts/verify-review.sh exist"
 }
 
 @test "review stats print only with the metrics extra on" {

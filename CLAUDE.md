@@ -59,7 +59,7 @@ Run agents in the foreground, one at a time, and wait for each report before sta
 
 Agents brief each other through the delegation prompt: name the change, the files, the blueprint if any and the base branch.
 
-Extras that are on (`scripts/extras.sh status`) add rules: follow each one's section in `template/docs/rollout.md`, Extras. With **profiles** on, its risk tiers and writer ladder authorise passing the Agent tool's `effort` parameter, never `model`, and the rung and risk tier go in each writer and reviewer prompt. With **codex** on, its plan review runs on the planner's blueprint before the owner's question round. This repo has profiles, stop-warning, verify-review and metrics on and codex off.
+Extras that are on (`scripts/extras.sh status`) add rules: follow each one's section in `template/docs/rollout.md`, Extras. With **profiles** on, its risk tiers and writer ladder authorise passing the Agent tool's `effort` parameter, never `model`, and the rung and risk tier go in each writer and reviewer prompt. With **codex** on, its plan review runs on the planner's blueprint before the owner's question round. This repo has profiles, verify-review and metrics on and codex off.
 
 ## Recording
 

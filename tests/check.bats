@@ -64,9 +64,30 @@ hook() { scripts/lint-hook.sh </dev/null; }
   assert_output --partial "bad file: README.md"
 }
 
+@test "with every extra off, check.sh all on a tailored repo leaves no kit state in .git" {
+  for f in CLAUDE.md docs/*.md .claude/agents/*.md; do
+    [[ -f "$f" ]] || continue
+    sed -i.bak -e 's/{{[^}]*}}/x/g' -e '/<!-- kit:/d' "$f" && rm -f "$f.bak"
+  done
+  python3 -I - <<'PY2'
+import re
+p = "scripts/check.sh"
+s = open(p).read()
+s = s.replace('not_configured "test"', '[[ -z "${FAIL:-}" ]]')
+s = re.sub(r"(?ms)^security\(\) \{.*?^\}\n", 'security() {\n  echo "== security"\n}\n', s)
+s = re.sub(r'not_configured "([^"]*)"', r'skip "\1"', s)
+open(p, "w").write(s)
+PY2
+  git add -A && git commit -qm tailored
+  run env FAIL=1 scripts/check.sh all
+  assert_failure 1
+  run scripts/check.sh all
+  assert_success
+  [[ ! -e "$(git rev-parse --git-path kit)" ]]
+}
+
 # The kit's own check.sh, run in a scratch repo so the result depends only on the files given here.
 root_check_repo() {
-  export KIT_STUCK_INNER=1 # the root's own check.sh, without the stuck detector
   R="$BATS_TEST_TMPDIR/root"
   mkdir -p "$R/scripts"
   cp "$REPO_ROOT/scripts/check.sh" "$R/scripts/"
@@ -352,7 +373,6 @@ lint_tree_repo() {
 }
 
 @test "root check.sh: a failing git ls-files fails the guard closed" {
-  export KIT_STUCK_INNER=1
   mkdir -p "$BATS_TEST_TMPDIR/nogit/scripts"
   cp "$REPO_ROOT/scripts/check.sh" "$BATS_TEST_TMPDIR/nogit/scripts/"
   GIT_CEILING_DIRECTORIES="$BATS_TEST_TMPDIR" run "$BATS_TEST_TMPDIR/nogit/scripts/check.sh" build

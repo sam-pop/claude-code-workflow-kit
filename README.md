@@ -47,7 +47,7 @@ claude-code-workflow-kit/scripts/install.sh --upgrade /path/to/your-repo
 
 Then say **Read .claude/kit-upgrade.md** in your repo. Files you changed are never overwritten: the kit's new version arrives beside them as `.kit` files, with the version you installed from as `.kit-base`, and that session merges them three-way, so only lines both you and the kit changed need a decision. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
-**Extras.** A fresh install is the core process. Model profiles, a Codex second opinion, a stop-warning hook, review verification and review stats are extras, off until you run `scripts/extras.sh on <name>`; see [Core and extras](#core-and-extras).
+**Extras.** A fresh install is the core process. Model profiles, a Codex second opinion, review verification and review stats are extras, off until you run `scripts/extras.sh on <name>`; see [Core and extras](#core-and-extras).
 
 Details for each step: [Quick start](#quick-start), [Daily use](#daily-use), [Upgrading the kit](#upgrading-the-kit).
 
@@ -103,15 +103,14 @@ Everything else is an **extra**, off in a fresh install. An extra is its files: 
 
 | Extra | Adds | Switch on |
 |---|---|---|
-| `profiles` | Model and effort per agent, risk-scaled review effort, the writer ladder, a counter that says `same failure N times` | `scripts/extras.sh on profiles`, then `scripts/set-models.sh <lite\|standard\|max>` |
+| `profiles` | Model and effort per agent, risk-scaled review effort, the writer ladder | `scripts/extras.sh on profiles`, then `scripts/set-models.sh <lite\|standard\|max>` |
 | `codex` | A Codex second opinion on the plan, on High-risk diffs and before a release | `scripts/extras.sh on codex` |
-| `stop-warning` | A warning at the end of a turn that names files changed since `check.sh all` last passed | `scripts/extras.sh on stop-warning` |
 | `verify-review` | A `### Verification` block on each saved review: are the quoted lines in the files, was every changed file read | `scripts/extras.sh on verify-review` |
 | `metrics` | Review-log counts and the agreement rate in `check.sh doctor` | `scripts/extras.sh on metrics` |
 
-`scripts/extras.sh status` shows which are on and warns about a half-enabled one; `off <name>` switches one back. Switching moves files and changes only the kit's own hook entry in `.claude/settings.json` (the rest of the file is kept, re-written with 2-space indentation). Record the choice in `docs/decisions.md`. One section per extra: `docs/rollout.md`, Extras.
+Every extra is exactly one file. `scripts/extras.sh status` shows which are on and warns about one that exists in both places; `off <name>` switches one back. Switching moves that file and edits nothing else. Record the choice in `docs/decisions.md`. One section per extra: `docs/rollout.md`, Extras.
 
-**Upgrades keep what each repo had.** A repo installed from 1.5 keeps every extra it ran; one installed from 1.4 gets `profiles` and `metrics` on, `stop-warning` and `verify-review` off, and `codex` as it was. See [Upgrading the kit](#upgrading-the-kit).
+**Upgrades keep what each repo had.** A repo installed from 1.5 or later keeps every extra it ran; one installed from 1.4 gets `profiles` and `metrics` on, `verify-review` off, and `codex` as it was. Two extras were retired in 1.8, `stop-warning` and the repeated-failure counter (`stuck-detect.sh`, half of `profiles`): a repo that had them keeps their files, listed as retired, and decides whether to keep them. See [Upgrading the kit](#upgrading-the-kit).
 
 ## Why this exists
 
@@ -378,8 +377,6 @@ template/                      # Everything here is installed, at the same paths
 │   └── optional/              # The extras, dormant: extras.sh on <name> moves a file to its active path
 │       ├── codex-reviewer.md  # codex: -> .claude/agents/
 │       ├── set-models.sh      # profiles: model and effort per agent -> scripts/
-│       ├── stuck-detect.sh    # profiles: counts identical check failures -> scripts/
-│       ├── check-stamp.sh     # stop-warning: warns at Stop when files changed since check.sh all passed -> scripts/
 │       ├── verify-review.sh   # verify-review: checks a saved review's quotes and coverage -> scripts/
 │       └── review-stats.sh    # metrics: review-log counts for doctor -> scripts/
 ├── scripts/
@@ -432,7 +429,6 @@ Configured in `.claude/settings.json`:
 | `permissions.deny` | Blocks `git push`, `reset --hard`, `clean`, `branch -D`, `branch -f`, `update-ref`, `checkout -- .`, `restore .`, `stash drop`, `stash clear`, `gh pr create`, `gh pr merge`, `gh repo delete`, `gh repo edit`, `gh repo archive`, `gh repo create`, `gh repo sync`, `npm publish`, and reading `.env` and `*.pem` files. Prefix rules: they prevent accidents, not attacks. |
 | `PostToolUse` on edits | Runs `check.sh lint --changed`; on failure, shows the output to Claude so it fixes the problem before moving on. Stays quiet until lint is configured. |
 | `SubagentStop` (reviewer, security-auditor, codex-reviewer, writer) / `SubagentHandback` | Saves reviewer, auditor and Codex reports to `docs/reviews/`, and a writer's `## STUCK:` report (other writer reports are ignored). With the verify-review extra on, reviewer and Codex reports then get a `### Verification` block from `scripts/verify-review.sh` (are the quoted lines really in the files, was every changed file read, are all sections there); when something is off, a one-line summary appears in the session. |
-| `Stop` | Only with the stop-warning extra on (`scripts/extras.sh on stop-warning`). Runs `scripts/check-stamp.sh hook` when Claude finishes a turn. If files differ from the ones the last passing `check.sh all` ran on, committed or not, it shows how many and up to three names; with no passing run recorded, it names the files `git status` shows. Silent when nothing changed and until `check.sh` is configured. It reads the tree without writing to the index or `.git/objects`. |
 | codex-reviewer frontmatter `PreToolUse` (codex extra) | Allows Bash only for `scripts/codex-review.sh plan <file>` (a relative `*.md` path inside the repo, not a secrets-file name; the script also refuses git-ignored paths and paths behind a symlinked directory) and `high\|release [ref]`; the script itself refuses when the change edits the review tooling. Tested by script, not yet observed firing in a live session. |
 | `CLAUDE_CODE_FORK_SUBAGENT=0` | Agents run in sequence, and Claude waits for each report |
 
@@ -505,7 +501,7 @@ Rows 1 and 3 are per solved task, row 2 per task. In row 2 the gain comes from r
 
 ## When things go wrong
 
-- **A writer reports `## STUCK:`** (`same failure N times` in the check output, the same file edited four times with no change in the test result, or a check still failing after its own repairs). The report is saved to `docs/reviews/` and, with the profiles extra on, the main session re-spawns the work one effort step up. The ladder is in `docs/rollout.md`, Extras, profiles.
+- **A writer reports `## STUCK:`** (the same check failing three times with the same error, the same file edited four times with no change in the test result, or a check still failing after its own repairs). The report is saved to `docs/reviews/` and, with the profiles extra on, the main session re-spawns the work one effort step up. The ladder is in `docs/rollout.md`, Extras, profiles.
 - **The writer's report and the reviewer's re-run disagree.** The re-run is the ground truth, and the disagreement is itself an escalation trigger.
 - **Checks fail right after tailoring.** An unconfigured check exits 2 (`NOT CONFIGURED`) by design: wire it in `scripts/check.sh`. `check.sh security` fails while gitleaks or semgrep is missing. `check.sh doctor` prints what is wrong, one line each. The lint hook stays quiet until lint is configured, so silence there is not a pass.
 
@@ -532,7 +528,7 @@ The installer records the version and each file's hash in `.claude/kit-version` 
 | **retired** | No longer in the kit: listed, never deleted (1.6 retires `handoff.md` and `docs/glossary.md`; yours stay as your own files) |
 | **never re-added** | `TAILOR.md`, `HOW-TO-USE.md` and `README.md` (the README is never installed) |
 
-Extras follow the repo: a file of an extra that is on is updated in place, one you switched off stays off, and the installer finishes with `scripts/extras.sh sync` so the move leaves no extra half-enabled. A tailored `scripts/check.sh` that lacks a line an extra needs stays half-enabled until you merge it, and `scripts/extras.sh status` (shown by `check.sh doctor`) warns. A pre-1.4 repo has no manifest, so every existing file that differs from the kit becomes `.kit` once; the manifest is written at the end and later upgrades are quiet. Then open Claude Code in the repo and say **Read .claude/kit-upgrade.md**: that file starts with the merge prompt, then the classification and the CHANGELOG sections since your version. The session merges each `.kit` file, deletes new files your tier does not use, re-applies your extras and model profile, runs `scripts/check.sh all`, records the upgrade in `docs/decisions.md` and deletes `.claude/kit-upgrade.md`. `check.sh doctor` warns about unmerged `.kit` and `.kit-base` files and while `.claude/kit-upgrade.md` is present. `--upgrade` refuses to run while a previous merge is unfinished (`.claude/kit-upgrade.md`, a `.kit` or a `.kit-base` file still present); `--force` runs it anyway, keeps files with a `.kit` sibling as tailored and keeps the earlier starting version and the earlier `.kit-base` files. What changed per version: [CHANGELOG.md](CHANGELOG.md).
+Extras follow the repo: a file of an extra that is on is updated in place and one you switched off stays off. A file the kit no longer ships (the 1.8 retirement of `scripts/check-stamp.sh` and `scripts/stuck-detect.sh`) is listed as retired at the path where your repo has it and is never deleted; the Upgrade notes in the CHANGELOG say whether to keep it. A pre-1.4 repo has no manifest, so every existing file that differs from the kit becomes `.kit` once; the manifest is written at the end and later upgrades are quiet. Then open Claude Code in the repo and say **Read .claude/kit-upgrade.md**: that file starts with the merge prompt, then the classification and the CHANGELOG sections since your version. The session merges each `.kit` file, deletes new files your tier does not use, re-applies your extras and model profile, runs `scripts/check.sh all`, records the upgrade in `docs/decisions.md` and deletes `.claude/kit-upgrade.md`. `check.sh doctor` warns about unmerged `.kit` and `.kit-base` files and while `.claude/kit-upgrade.md` is present. `--upgrade` refuses to run while a previous merge is unfinished (`.claude/kit-upgrade.md`, a `.kit` or a `.kit-base` file still present); `--force` runs it anyway, keeps files with a `.kit` sibling as tailored and keeps the earlier starting version and the earlier `.kit-base` files. What changed per version: [CHANGELOG.md](CHANGELOG.md).
 
 **Three-way merge.** For each tailored file the installer reads the kit's copy at the commit you installed from (`commit=` in `.claude/kit-version`) out of the kit checkout's git history and saves it as `<name>.kit-base`. The merge session runs `git merge-file -L yours -L base -L kit <name> <name>.kit-base <name>.kit`, so only the lines both you and the kit changed are conflicts, and it resolves just those. A base is written only when its sha256 equals the manifest's hash for that file, so a kit that was edited but uncommitted at install time never yields a wrong base; with no usable base (a shallow or tarball kit checkout, a commit the checkout lacks, a hash mismatch) the file is merged two-way and `.claude/kit-upgrade.md` says why. A `--force` run over an unfinished merge writes no new base: the manifest by then describes the new kit, so a fresh base would equal the `.kit` and silently resolve every hunk to yours. A repo installed before 1.4 has no manifest and no `commit=`: pass `--base <kit commit you installed from>` (7 to 40 hex digits, valid only with `--upgrade`) to get `.kit-base` files; the kit does not guess a base. With no manifest there is no hash to check, so that copy is taken as is: name the right commit.
 

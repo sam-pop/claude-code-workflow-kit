@@ -15,10 +15,8 @@ load helpers
   isolate
   installed_target
   cd "$TARGET" || exit 1
-  extras_on stop-warning
+  extras_on verify-review
   echo changed >>README.md
-  run bash scripts/check-stamp.sh tree
-  assert_success
   git add -A && git commit -qm more
   assert_equal "$(git rev-parse --git-dir)" ".git"
   assert_equal "$(find "$decoy" -type f | sort | tr '\n' ' ')" "$before"

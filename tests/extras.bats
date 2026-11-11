@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# template/scripts/extras.sh: switching extras on and off, the hook edit in settings.json, status
-# warnings for half-enabled extras, sync, and refusals.
+# template/scripts/extras.sh: switching extras on and off (one file each), status, refusals, and the
+# retired stop-warning.
 
 # shellcheck disable=SC2153,SC2016  # KIT and TARGET are set by helpers.bash; sed scripts hold literal $
 load helpers
@@ -11,106 +11,13 @@ setup() {
   cd "$TARGET" || exit 1
 }
 
-stop_hooks() { # number of hooks under Stop that run check-stamp.sh, then the Stop key's presence
-  python3 - <<'PY'
-import json
-d = json.load(open(".claude/settings.json"))
-stop = d.get("hooks", {}).get("Stop")
-n = sum("scripts/check-stamp.sh" in h.get("command", "") for g in (stop or []) for h in g.get("hooks", []))
-print(n, "stop-key" if stop is not None else "no-stop-key")
-PY
-}
-
-@test "fresh install: every extra off, status exit 0, no Stop hook" {
+@test "fresh install: every extra off, status exit 0, and stop-warning is not an extra any more" {
   run bash scripts/extras.sh status
   assert_success
   assert_output "codex: off
 profiles: off
-stop-warning: off
 verify-review: off
 metrics: off"
-  assert_equal "$(stop_hooks)" "0 no-stop-key"
-}
-
-@test "stop-warning on then off leaves an untailored settings.json byte-identical" {
-  cp .claude/settings.json "$BATS_TEST_TMPDIR/before"
-  run bash scripts/extras.sh on stop-warning
-  assert_success
-  assert_output --partial "moved: .claude/optional/check-stamp.sh -> scripts/check-stamp.sh"
-  assert_output --partial "hook added: Stop"
-  assert_output --partial "Record it in docs/decisions.md"
-  [[ -x scripts/check-stamp.sh && ! -e .claude/optional/check-stamp.sh ]]
-  assert_equal "$(stop_hooks)" "1 stop-key"
-  run bash scripts/extras.sh off stop-warning
-  assert_success
-  assert_output --partial "hook removed: Stop"
-  [[ -f .claude/optional/check-stamp.sh && ! -e scripts/check-stamp.sh ]]
-  cmp .claude/settings.json "$BATS_TEST_TMPDIR/before"
-}
-
-@test "on twice adds one hook; off twice is a no-op the second time" {
-  bash scripts/extras.sh on stop-warning >/dev/null
-  run bash scripts/extras.sh on stop-warning
-  assert_success
-  assert_output --partial "stop-warning was already on"
-  assert_equal "$(stop_hooks)" "1 stop-key"
-  bash scripts/extras.sh off stop-warning >/dev/null
-  run bash scripts/extras.sh off stop-warning
-  assert_success
-  assert_output --partial "stop-warning was already off"
-}
-
-@test "a tailored settings.json keeps its own hooks, its ask rule and a shared Stop group's other hook" {
-  python3 - <<'PY'
-import json
-p = ".claude/settings.json"
-d = json.load(open(p))
-d["permissions"]["ask"] = ["Bash(git push:*)"]
-d["hooks"]["Stop"] = [{"hooks": [{"type": "command", "command": "./notify.sh"}]}]
-d["hooks"]["Notification"] = [{"hooks": [{"type": "command", "command": "./ping.sh"}]}]
-open(p, "w").write(json.dumps(d, indent=4))
-PY
-  bash scripts/extras.sh on stop-warning >/dev/null
-  assert_equal "$(stop_hooks)" "1 stop-key"
-  # the user moves the kit's hook into their own Stop group
-  python3 - <<'PY'
-import json
-p = ".claude/settings.json"
-d = json.load(open(p))
-mine = d["hooks"]["Stop"].pop()["hooks"][0]
-d["hooks"]["Stop"][0]["hooks"].append(mine)
-open(p, "w").write(json.dumps(d, indent=2))
-PY
-  run bash scripts/extras.sh off stop-warning
-  assert_success
-  run python3 -c 'import json; d = json.load(open(".claude/settings.json")); print(d["permissions"]["ask"], d["hooks"]["Stop"], len(d["hooks"]["Notification"]))'
-  assert_output "['Bash(git push:*)'] [{'hooks': [{'type': 'command', 'command': './notify.sh'}]}] 1"
-}
-
-@test "off drops a Stop group and the Stop key left empty" {
-  bash scripts/extras.sh on stop-warning >/dev/null
-  bash scripts/extras.sh off stop-warning >/dev/null
-  assert_equal "$(stop_hooks)" "0 no-stop-key"
-  run grep -c '"Stop"' .claude/settings.json
-  assert_output 0
-}
-
-@test "invalid settings.json: on stop-warning exits 1, the file and the script stay as they were" {
-  printf '{ "hooks": \n' >.claude/settings.json
-  cp .claude/settings.json "$BATS_TEST_TMPDIR/before"
-  run bash scripts/extras.sh on stop-warning
-  assert_failure 1
-  assert_output --partial "not valid JSON"
-  cmp .claude/settings.json "$BATS_TEST_TMPDIR/before"
-  [[ -f .claude/optional/check-stamp.sh && ! -e scripts/check-stamp.sh ]]
-}
-
-@test "missing settings.json: on stop-warning exits 1 and moves nothing" {
-  rm .claude/settings.json
-  run bash scripts/extras.sh on stop-warning
-  assert_failure 1
-  assert_output --partial "settings.json is missing"
-  [[ -f .claude/optional/check-stamp.sh && ! -e scripts/check-stamp.sh ]]
 }
 
 @test "both copies exist: on and off exit 1 and move nothing" {
@@ -175,100 +82,6 @@ PY
   assert_output "my edit"
 }
 
-@test "status warns (exit 1) on a missing hook, a missing check.sh line and a hook left behind" {
-  extras_on stop-warning
-  run bash scripts/extras.sh status
-  assert_success
-  # hook missing
-  bash scripts/extras.sh off stop-warning >/dev/null
-  mv .claude/optional/check-stamp.sh scripts/check-stamp.sh
-  run bash scripts/extras.sh status
-  assert_failure 1
-  assert_output --partial "warn: stop-warning is on but .claude/settings.json has no Stop hook"
-  # check.sh line missing (a comment naming it does not count)
-  git checkout -q -- .claude/settings.json
-  sed -i.bak 's/^\( *\)\[\[ \$rc -eq 0.*check-stamp.sh record.*$/\1# scripts\/check-stamp.sh record dropped/' scripts/check.sh && rm -f scripts/check.sh.bak
-  run bash scripts/extras.sh status
-  assert_failure 1
-  assert_output --partial "warn: stop-warning is on but scripts/check.sh does not run scripts/check-stamp.sh record"
-  git checkout -q -- scripts/check.sh
-  # hook left behind: the script is off, the hook is not
-  mv scripts/check-stamp.sh .claude/optional/check-stamp.sh
-  run bash scripts/extras.sh status
-  assert_failure 1
-  assert_output --partial "has a Stop hook for scripts/check-stamp.sh but stop-warning is off"
-}
-
-@test "status warns (exit 1) when a non-primary file disagrees with the primary: on:off, off:on and on:none (review item 1)" {
-  # profiles is on (set-models.sh active) but stuck-detect.sh is still dormant: on:off
-  bash scripts/extras.sh on profiles >/dev/null
-  run bash scripts/extras.sh status
-  assert_success
-  mv scripts/stuck-detect.sh .claude/optional/stuck-detect.sh
-  run bash scripts/extras.sh status
-  assert_failure 1
-  assert_output --partial "warn: profiles is on but .claude/optional/stuck-detect.sh is still off"
-  # the file is gone from both places: on:none
-  rm .claude/optional/stuck-detect.sh
-  run bash scripts/extras.sh status
-  assert_failure 1
-  assert_output --partial "warn: profiles is on but scripts/stuck-detect.sh is missing"
-  # profiles is off (set-models.sh dormant) but stuck-detect.sh is active: off:on
-  git reset -q --hard && git clean -fdq
-  mv .claude/optional/stuck-detect.sh scripts/stuck-detect.sh
-  [[ -f .claude/optional/set-models.sh ]]
-  run bash scripts/extras.sh status
-  assert_failure 1
-  assert_output --partial "warn: profiles is off but scripts/stuck-detect.sh is on"
-}
-
-@test "sync moves a non-primary file back to dormant when the primary is dormant, then status is clean (review item 1)" {
-  mv .claude/optional/stuck-detect.sh scripts/stuck-detect.sh
-  [[ -f .claude/optional/set-models.sh ]]
-  run bash scripts/extras.sh status
-  assert_failure 1
-  run bash scripts/extras.sh sync
-  assert_success
-  assert_output --partial "moved: scripts/stuck-detect.sh -> .claude/optional/stuck-detect.sh"
-  [[ -f .claude/optional/stuck-detect.sh && ! -e scripts/stuck-detect.sh ]]
-  run bash scripts/extras.sh status
-  assert_success
-}
-
-@test "sync adds the hook of an extra whose file is on, and removes a hook whose script was deleted" {
-  mv .claude/optional/check-stamp.sh scripts/check-stamp.sh
-  run bash scripts/extras.sh sync
-  assert_success
-  assert_output --partial "hook added: Stop"
-  assert_equal "$(stop_hooks)" "1 stop-key"
-  run bash scripts/extras.sh status
-  assert_success
-  rm scripts/check-stamp.sh
-  run bash scripts/extras.sh sync
-  assert_success
-  assert_output --partial "hook removed: Stop"
-  assert_equal "$(stop_hooks)" "0 no-stop-key"
-  run bash scripts/extras.sh status
-  assert_success
-  assert_line "stop-warning: not installed"
-}
-
-@test "sync with an invalid settings.json warns and exits 1, leaving it unchanged" {
-  mv .claude/optional/check-stamp.sh scripts/check-stamp.sh
-  printf 'not json\n' >.claude/settings.json
-  run bash scripts/extras.sh sync
-  assert_failure 1
-  assert_output --partial "stop-warning: .claude/settings.json is not valid JSON"
-  assert_equal "$(cat .claude/settings.json)" "not json"
-}
-
-@test "settings.json keeps its file mode across a hook edit" {
-  chmod 600 .claude/settings.json
-  bash scripts/extras.sh on stop-warning >/dev/null
-  perm=$(stat -c %a .claude/settings.json 2>/dev/null || stat -f %Lp .claude/settings.json)
-  assert_equal "$perm" 600
-}
-
 @test "CLAUDE_PROJECT_DIR (reserved for hooks) is ignored: extras.sh acts on its own repo; KIT_EXTRAS_REPO selects another (item 12)" {
   other="$BATS_TEST_TMPDIR/other"
   mkdir -p "$other/.claude/optional"
@@ -282,50 +95,6 @@ PY
   assert_line "metrics: not installed"
 }
 
-# Hook ownership: the kit's hook is the exact command it writes, under the event it writes it to.
-user_hook_json() { # event command -> adds a user hook to settings.json
-  python3 -I - "$1" "$2" <<'PY'
-import json, sys
-p = ".claude/settings.json"
-d = json.load(open(p))
-d.setdefault("hooks", {}).setdefault(sys.argv[1], []).append({"hooks": [{"type": "command", "command": sys.argv[2], "timeout": 7}]})
-open(p, "w").write(json.dumps(d, indent=2) + "\n")
-PY
-}
-hook_json() { # event -> the JSON of that event's groups
-  python3 -I -c 'import json, sys; print(json.dumps(json.load(open(".claude/settings.json"))["hooks"].get(sys.argv[1]), sort_keys=True))' "$1"
-}
-
-@test "off stop-warning keeps a user PostToolUse hook whose command mentions backup-scripts/check-stamp.sh.orig (audit L1)" {
-  bash scripts/extras.sh on stop-warning >/dev/null
-  user_hook_json PostToolUse 'cp x backup-scripts/check-stamp.sh.orig'
-  before=$(hook_json PostToolUse)
-  run bash scripts/extras.sh off stop-warning
-  assert_success
-  assert_output --partial "hook removed: Stop"
-  assert_equal "$(hook_json PostToolUse)" "$before"
-  assert_equal "$(stop_hooks)" "0 no-stop-key"
-}
-
-@test "on stop-warning adds the Stop hook although another hook's command mentions scripts/check-stamp.sh (audit L1)" {
-  user_hook_json PostToolUse 'echo see scripts/check-stamp.sh'
-  run bash scripts/extras.sh on stop-warning
-  assert_success
-  assert_output --partial "hook added: Stop"
-  assert_equal "$(stop_hooks)" "1 stop-key"
-}
-
-@test "the kit's exact command under another event is not the kit's hook (audit L1)" {
-  user_hook_json PostToolUse '"${CLAUDE_PROJECT_DIR}/scripts/check-stamp.sh" hook'
-  before=$(hook_json PostToolUse)
-  bash scripts/extras.sh on stop-warning >/dev/null
-  assert_equal "$(stop_hooks)" "1 stop-key"
-  run bash scripts/extras.sh off stop-warning
-  assert_success
-  assert_equal "$(hook_json PostToolUse)" "$before"
-  assert_equal "$(stop_hooks)" "0 no-stop-key"
-}
-
 @test "on metrics refuses when .claude/optional is a symlink to a directory outside the repo; the outside file stays (audit L2)" {
   out="$BATS_TEST_TMPDIR/outside"
   mv .claude/optional "$out"
@@ -336,13 +105,60 @@ hook_json() { # event -> the JSON of that event's groups
   [[ -f "$out/review-stats.sh" && ! -e scripts/review-stats.sh ]]
 }
 
-@test "sync refuses to move a dormant profiles file whose directory leads outside the repo (audit L2)" {
-  mv .claude/optional/set-models.sh scripts/set-models.sh
-  out="$BATS_TEST_TMPDIR/outside"
-  mv .claude/optional "$out"
-  ln -s "$out" .claude/optional
-  run bash scripts/extras.sh sync
+@test "on stop-warning says it was retired in 1.8, exits 1 and changes nothing; off exits 0 and changes nothing" {
+  git status --short >"$BATS_TEST_TMPDIR/before"
+  run bash scripts/extras.sh on stop-warning
   assert_failure 1
-  assert_output --partial ".claude/optional/stuck-detect.sh resolves outside the repo"
-  [[ -f "$out/stuck-detect.sh" && ! -e scripts/stuck-detect.sh ]]
+  assert_output --partial "stop-warning was retired in 1.8"
+  run bash scripts/extras.sh off stop-warning
+  assert_success
+  assert_output --partial "stop-warning was retired in 1.8"
+  git status --short >"$BATS_TEST_TMPDIR/after"
+  cmp "$BATS_TEST_TMPDIR/before" "$BATS_TEST_TMPDIR/after"
+  [[ ! -e scripts/check-stamp.sh && ! -e .claude/optional/check-stamp.sh ]]
+}
+
+@test "sync is gone: extras.sh sync is a usage error (exit 2)" {
+  run bash scripts/extras.sh sync
+  assert_failure 2
+}
+
+@test "a 1.7 repo's leftovers (Stop hook, check-stamp.sh, stuck-detect.sh and a stamp line in check.sh) never make status warn or fail" {
+  mkdir -p .claude
+  echo '#!/usr/bin/env bash' >scripts/check-stamp.sh
+  echo '#!/usr/bin/env bash' >scripts/stuck-detect.sh
+  echo '[[ -f scripts/stuck-detect.sh ]] && exec bash scripts/stuck-detect.sh "$@"' >>scripts/check.sh
+  python3 -I - <<'PY2'
+import json
+p = ".claude/settings.json"
+d = json.load(open(p))
+d.setdefault("hooks", {})["Stop"] = [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/check-stamp.sh\" hook", "timeout": 30}]}]
+open(p, "w").write(json.dumps(d, indent=2) + "\n")
+PY2
+  run bash scripts/extras.sh status
+  assert_success
+  assert_output "codex: off
+profiles: off
+verify-review: off
+metrics: off"
+}
+
+@test "profiles is one file: on and off move only set-models.sh" {
+  run bash scripts/extras.sh on profiles
+  assert_success
+  assert_output --partial "moved: .claude/optional/set-models.sh -> scripts/set-models.sh"
+  [[ -x scripts/set-models.sh ]]
+  [[ ! -e scripts/stuck-detect.sh && ! -e .claude/optional/stuck-detect.sh ]]
+  run bash scripts/extras.sh off profiles
+  assert_success
+  [[ -f .claude/optional/set-models.sh && ! -e scripts/set-models.sh ]]
+}
+
+@test "on and off leave .claude/settings.json byte-identical for every extra" {
+  cp .claude/settings.json "$BATS_TEST_TMPDIR/before"
+  for x in codex profiles verify-review metrics; do
+    bash scripts/extras.sh on "$x" >/dev/null
+    bash scripts/extras.sh off "$x" >/dev/null
+  done
+  cmp .claude/settings.json "$BATS_TEST_TMPDIR/before"
 }

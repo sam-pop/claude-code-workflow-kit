@@ -52,9 +52,8 @@ Record each choice in `docs/decisions.md`. An upgrade keeps each extra as your r
 
 | Extra | Adds | Cost or egress | Switch on |
 |---|---|---|---|
-| `profiles` | Model and effort per agent (lite, standard or max), risk-scaled review effort, the writer ladder, a repeated-failure counter. Needs Claude Code v2.1.292 or later. | Model spend follows the profile; `max` bills Fable credits on Pro and standard Team plans, and `claude -p` does so without asking (set a cap in `/usage-credits`) | `scripts/extras.sh on profiles`, then `scripts/set-models.sh <lite\|standard\|max>` |
+| `profiles` | Model and effort per agent (lite, standard or max), risk-scaled review effort, the writer ladder. Needs Claude Code v2.1.292 or later. | Model spend follows the profile; `max` bills Fable credits on Pro and standard Team plans, and `claude -p` does so without asking (set a cap in `/usage-credits`) | `scripts/extras.sh on profiles`, then `scripts/set-models.sh <lite\|standard\|max>` |
 | `codex` | A Codex second opinion: on the planner's blueprint, on High-risk diffs and before a release. Never blocks. | Sends the plan text, or the diff with 20 lines of context (no repository files), to OpenAI; on client work get the client's OK first. Needs gitleaks and refuses when the change edits its own script. Takes its trusted config only from the base branch (set `BASE_BRANCH` for another, in the session environment, e.g. the `env` block of `.claude/settings.json`); filtered files leave as stored. Not available on Review-only. | `scripts/extras.sh on codex` |
-| `stop-warning` | A one-line warning at the end of a turn naming files that changed since `check.sh all` last passed | A short git scan each turn | `scripts/extras.sh on stop-warning` |
 | `verify-review` | A `### Verification` block on each saved review | None | `scripts/extras.sh on verify-review` |
 | `metrics` | Review-log counts and the agreement rate in `check.sh doctor` | None | `scripts/extras.sh on metrics` |
 
@@ -80,8 +79,6 @@ What comes back:
 Agents run one at a time in the foreground; the kit turns off fork mode so Claude waits for each.
 
 **Handing work to another agent or person.** When you switch agents mid-task, write a brief status note: where things stand, what's next, and which open items block it. Point the next agent at it plus `docs/decisions.md` and `docs/open.md`. Keep secrets and private plans out of it.
-
-**Stop warning (stop-warning extra).** When Claude finishes a turn after files changed since the last passing `scripts/check.sh all`, a one-line warning names those files ("scripts/check.sh all has not passed since these changes: …"). It is a reminder, not a block: run `scripts/check.sh all` (or ask Claude to) before you trust a "checks passed" claim or commit. Nothing is shown while the tree matches the last passing run, committed or not.
 
 ## After every review
 
@@ -112,7 +109,6 @@ Then open Claude Code in the repo and say: **Read .claude/kit-upgrade.md**. That
 ## What you own
 
 - **Pushes and merges.** The kit's deny rules stop agents from pushing, resetting, cleaning, moving branches (`git branch -f`, `git update-ref`), and from `gh pr create`, `gh pr merge`, `gh repo create`, `gh repo sync`, `gh repo edit`, `gh repo archive` and `gh repo delete`. They prevent accidents but aren't a sandbox: a reworded command can slip past them.
-- **The Stop warning** (stop-warning extra). After each turn, if files changed since `scripts/check.sh all` last passed, Claude Code shows a one-line warning with the count and up to three names. Committing unchecked changes does not silence it. If `check.sh all` cannot pass on your machine (for example semgrep is not installed), the warning appears on every turn with changes: install the tool or make that check `skip` with a reason.
 - **Open items** and **accepted risks** (a Critical or High security finding you choose not to fix goes in `docs/decisions.md` with a date and reason).
 - **The reviewer's two lists.** Add what you have corrected twice; prune quarterly.
 
