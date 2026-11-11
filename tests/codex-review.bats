@@ -1271,3 +1271,21 @@ real_gitleaks() {
   assert_failure 5
   assert_equal "$(codex_calls)" 1
 }
+
+@test "real gitleaks: a base config allowlisting .*\\.md\$ exempts neither the diff's removed lines nor a plan (the prompt is not named prompt.md)" {
+  real_gitleaks
+  printf '[extend]\nuseDefault = true\n[[allowlists]]\npaths = ['"'''"'.*\\.md$'"'''"']\n' >.gitleaks.toml
+  echo "token=$(fake_token)" >src/old.txt
+  git add -A && git commit -qm "md allowlist and a token"
+  publish
+  git rm -q src/old.txt # the token now lives only in the removed lines of the diff
+  run scripts/codex-review.sh high
+  assert_failure 5
+  assert_output --partial "secrets found"
+  git reset -q --hard
+  echo "# plan" >plan.md
+  echo "token=$(fake_token)" >>plan.md
+  run scripts/codex-review.sh plan plan.md
+  assert_failure 5
+  assert_equal "$(codex_calls)" 0
+}
