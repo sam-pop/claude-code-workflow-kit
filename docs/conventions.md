@@ -86,6 +86,7 @@ Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh
 | A behaviour change without README, `template/HOW-TO-USE.md` and CHANGELOG Upgrade notes | judgment |
 | Resolving an item in `docs/open.md` without the owner | judgment |
 | Unrelated refactors mixed into a change | judgment |
+| A fix for a scanner-bypass finding (a secret passing the Codex gitleaks pre-scan) that adds code instead of a line in the blind-spot list in `docs/rollout.md`, when no documented guarantee is false | judgment |
 
 ## Definition of done
 
