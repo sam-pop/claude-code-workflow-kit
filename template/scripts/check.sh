@@ -4,17 +4,13 @@
 #   --changed  limit lint to files changed vs the base branch, including untracked files (hook fast path)
 # Exit codes: 0 pass, 1 a check failed, 2 NOT CONFIGURED or usage.
 # Environment: BASE_BRANCH (default: origin/HEAD, else main; origin/<base> when there is no local
-# branch), SEMGREP_CONFIG (default p/default), KIT_STUCK_INNER (set by scripts/stuck-detect.sh for
-# the run it wraps).
+# branch), SEMGREP_CONFIG (default p/default).
 #
 # kit: replace each NOT CONFIGURED line with this repo's real commands. An unconfigured check FAILS
 # (exit 2) on purpose, so nobody can report "lint passed" for a check that never ran. If a check
 # truly does not apply, replace its body with: skip "<reason>"
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
-# Profiles extra: scripts/stuck-detect.sh counts identical failures for the writer's stop rule.
-# While it is off the file is absent and check.sh keeps no state. Keep this line when tailoring.
-[[ -z "${KIT_STUCK_INNER:-}" && -f scripts/stuck-detect.sh ]] && exec bash scripts/stuck-detect.sh "$@"
 
 BASE_BRANCH="${BASE_BRANCH:-$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
@@ -114,16 +110,12 @@ security() {
 }
 
 run_all() {
-  local rc=0 t
-  # Stop-warning extra: the two check-stamp lines record when checks last passed; no-op while it is
-  # off. Keep them when tailoring.
-  t=$(bash scripts/check-stamp.sh tree 2>/dev/null)
+  local rc=0
   lint || rc=1
   test_ || rc=1
   build || rc=1
   security || rc=1
   bash scripts/doctor.sh || rc=1
-  [[ $rc -eq 0 && -n "$t" ]] && bash scripts/check-stamp.sh record "$t"
   echo "== all: $([[ $rc -eq 0 ]] && echo PASS || echo FAIL)"
   return $rc
 }

@@ -4,8 +4,7 @@
 #   --changed  limit lint to files changed vs the base branch, including untracked files (hook fast path)
 # Exit codes: 0 pass, 1 a check failed or a tool is missing, 2 usage.
 # Environment: BASE_BRANCH (default: origin/HEAD, else main; origin/<base> when there is no local
-# branch); KIT_EXPECT_BASH (CI: when set, `test` prints the bash version found on PATH first);
-# KIT_STUCK_INNER (set by scripts/stuck-detect.sh for the run it wraps).
+# branch); KIT_EXPECT_BASH (CI: when set, `test` prints the bash version found on PATH first).
 #
 # The kit's own copy (tailored from template/scripts/check.sh). A missing tool is a FAIL with the
 # command that installs it, never a silent skip.
@@ -25,9 +24,6 @@ if [[ "$n" -gt 0 ]]; then
   echo "FAIL: files under .tools/ or node_modules/ are tracked; checking out such a branch replaces the tools check.sh runs" >&2
   exit 1
 fi
-# Profiles extra: scripts/stuck-detect.sh counts identical failures for the writer's stop rule.
-# While it is off the file is absent and check.sh keeps no state. Keep this line when tailoring.
-[[ -z "${KIT_STUCK_INNER:-}" && -f scripts/stuck-detect.sh ]] && exec bash scripts/stuck-detect.sh "$@"
 
 BASE_BRANCH="${BASE_BRANCH:-$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
@@ -191,16 +187,12 @@ security() {
 doctor() { bash scripts/doctor.sh; }
 
 run_all() {
-  local rc=0 t
-  # Stop-warning extra: the two check-stamp lines record when checks last passed; no-op while it is
-  # off. Keep them when tailoring.
-  t=$(bash scripts/check-stamp.sh tree 2>/dev/null)
+  local rc=0
   lint || rc=1
   test_ || rc=1
   build || rc=1
   security || rc=1
   doctor || rc=1
-  [[ $rc -eq 0 && -n "$t" ]] && bash scripts/check-stamp.sh record "$t"
   echo "== all: $([[ $rc -eq 0 ]] && echo PASS || echo FAIL)"
   return $rc
 }

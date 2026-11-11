@@ -43,7 +43,7 @@ If a check prints NOT CONFIGURED or cannot run here, the work is **unverified**:
 
 Stop and report instead of looping when any of these happens:
 
-- `scripts/check.sh` printing `same failure N times: …` is the first rule firing; without the profiles extra, the same check failing with the same error 3 times is.
+- The same check failing with the same error 3 times.
 - The same file has been edited 4 times without the test result changing.
 - A check still fails after your own repair attempts.
 

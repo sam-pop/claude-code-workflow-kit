@@ -25,8 +25,8 @@
 # Extras: a file under template/.claude/optional/ is an extra's, off there; on, it lives at its active
 # path (.claude/agents/<f>.md, scripts/<f>.sh). An upgrade updates it where it is, so an extra stays
 # on or off as the repo had it; the manifest keys it by its .claude/optional/ path. A fresh install
-# puts every extra off. After an upgrade, the kit's scripts/extras.sh sync completes each extra (its
-# other files and its hook follow its first file); a sync failure is a warning, not an error.
+# puts every extra off. An extra the kit no longer ships is listed as retired, at the path where the
+# repo has the file (its active path when the extra was on), and is never deleted.
 # Writes only inside the target: a destination, .kit sibling or state file whose real path leaves it
 # (a symlinked directory or a symlink) refuses the whole run before anything is written. Only files
 # this run writes get their mode set: executable when the kit's copy is, and every .sh.
@@ -372,6 +372,9 @@ for rel in files:
 if upgrade:
     for rel in sorted(set(old) - set(files) - {dst_of(r) for r in files}
                       - {active_path(r) for r in files}):
+        act = active_path(rel)
+        if act is not None and not present(rel) and present(act):
+            rel = act  # an extra that was on lives at its active path, not at the dormant one the manifest keys
         groups["retired"].append(rel)
         if SAFE_PATH.fullmatch(rel):  # a manifest line comes from the target: never print it raw
             print(f"{'retired:':<26}{rel}   {NOTE['retired']}")
@@ -441,11 +444,6 @@ if upgrade:
 PY
 
 [[ "$DRY" == 1 ]] && exit 0
-if [[ "$MODE" == upgrade && -f "$TPL/scripts/extras.sh" ]]; then
-  # The kit's copy, never the target's: an extra on in the repo gets its other files and its hook.
-  KIT_EXTRAS_REPO="$TARGET" bash "$TPL/scripts/extras.sh" sync \
-    || echo "warn: scripts/extras.sh sync did not finish; run scripts/extras.sh status in $TARGET" >&2
-fi
 echo
 if [[ "$MODE" == upgrade ]]; then
   echo "Next: open Claude Code in $TARGET and say: Read .claude/kit-upgrade.md"

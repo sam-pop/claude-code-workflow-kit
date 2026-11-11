@@ -206,11 +206,11 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   assert_line --regexp '^retired: +docs/glossary\.md '
   [[ "$(grep -c '^retired:' <<<"$output")" == 2 ]]
   refute_line --regexp '^new: +\.claude/optional/codex-reviewer.md'
-  # 1.5 and 1.6 add exactly these files: stop-warning and verify-review arrive off, metrics on.
+  # 1.5 to 1.8 add exactly these files: verify-review arrives off, metrics on; the retired stop-warning
+  # and stuck detector are not offered.
   assert_equal "$(grep -E '^new: ' <<<"$output" | awk '{print $2}' | sort | tr '\n' ' ')" \
-    ".claude/optional/check-stamp.sh .claude/optional/stuck-detect.sh .claude/optional/verify-review.sh .github/dependabot.yml scripts/extras.sh scripts/review-stats.sh "
-  # profiles is on, so sync moves its new stuck detector next to set-models.sh
-  assert_line "moved: .claude/optional/stuck-detect.sh -> scripts/stuck-detect.sh"
+    ".claude/optional/verify-review.sh .github/dependabot.yml scripts/extras.sh scripts/review-stats.sh "
+  [[ ! -e "$TARGET/scripts/stuck-detect.sh" && ! -e "$TARGET/.claude/optional/stuck-detect.sh" ]]
   assert_line --regexp '^(current|replaced): +scripts/set-models\.sh$'
   assert_line --regexp '\.claude/agents/codex-reviewer\.md'
   [[ ! -e "$TARGET/.claude/optional/codex-reviewer.md" ]]
@@ -219,7 +219,6 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   assert_success
   assert_output "codex: on
 profiles: on
-stop-warning: off
 verify-review: off
 metrics: on"
 }
@@ -241,44 +240,101 @@ installed_from_15() {
   git -C "$TARGET" add -A && git -C "$TARGET" commit -qm k15
 }
 
-@test "upgrade from kit 1.5: every extra it ran stays on, the Stop hook stays, status is clean, only handoff.md and docs/glossary.md retired" {
+@test "upgrade from kit 1.5: verify-review, profiles and metrics stay on; handoff.md, docs/glossary.md and scripts/check-stamp.sh are retired, not deleted" {
   use_stub codex
   installed_from_15
-  cp "$TARGET/.claude/settings.json" "$BATS_TEST_TMPDIR/settings15"
   run "$KIT/scripts/install.sh" --upgrade "$TARGET"
   assert_success
-  assert_line --partial "retired 2"
+  assert_line --partial "retired 3"
   assert_line --regexp '^retired: +handoff\.md '
   assert_line --regexp '^retired: +docs/glossary\.md '
-  [[ "$(grep -c '^retired:' <<<"$output")" == 2 ]]
-  assert_line --regexp '^replaced: +\.claude/settings\.json$'
-  assert_line --partial "hook added: Stop"
+  assert_line --regexp '^retired: +scripts/check-stamp\.sh '
+  [[ "$(grep -c '^retired:' <<<"$output")" == 3 ]]
+  [[ -x "$TARGET/scripts/check-stamp.sh" ]]
   assert_line --regexp '^new: +scripts/review-stats\.sh$'
-  assert_line "moved: .claude/optional/stuck-detect.sh -> scripts/stuck-detect.sh"
-  [[ -x "$TARGET/scripts/stuck-detect.sh" ]]
-  for f in check-stamp.sh verify-review.sh set-models.sh; do
+  for f in verify-review.sh set-models.sh; do
     assert_line --regexp "^(current|replaced): +scripts/$f\$"
     [[ -x "$TARGET/scripts/$f" && ! -e "$TARGET/.claude/optional/$f" ]] || fail "$f not on"
   done
-  # the untailored settings.json the upgrade replaced gets its Stop hook back, byte for byte
-  cmp "$TARGET/.claude/settings.json" "$BATS_TEST_TMPDIR/settings15"
+  # the untailored settings.json of 1.5 is replaced, so it no longer carries the Stop hook
+  assert_line --regexp '^replaced: +\.claude/settings\.json$'
+  cmp "$TARGET/.claude/settings.json" "$KIT/template/.claude/settings.json"
   run bash "$TARGET/scripts/extras.sh" status
   assert_success
   assert_output "codex: off
 profiles: on
-stop-warning: on
 verify-review: on
 metrics: on"
   # the manifest keys extras by their .claude/optional/ path
-  run grep -cE '  (scripts|\.claude/agents)/(check-stamp|verify-review|set-models|review-stats)\.sh$' "$TARGET/.claude/kit-manifest"
+  run grep -cE '  (scripts|\.claude/agents)/(verify-review|set-models|review-stats)\.sh$' "$TARGET/.claude/kit-manifest"
   assert_output 0
-  # nothing changed in the kit since: a second upgrade is all current and syncs nothing
+  run grep -c 'check-stamp' "$TARGET/.claude/kit-manifest"
+  assert_output 0
+  # nothing changed in the kit since: a second upgrade is all current and lists nothing new
   git -C "$TARGET" add -A && git -C "$TARGET" commit -qm up
   rm "$TARGET/.claude/kit-upgrade.md"
   run "$KIT/scripts/install.sh" --upgrade "$TARGET"
   assert_success
-  refute_line --partial "hook added"
   refute_line --regexp '^(new|replaced|tailored):'
+}
+
+@test "upgrade from kit 1.7 with stop-warning and profiles on: both scripts listed retired at scripts/, no file and no Stop hook touched, status exits 0" {
+  git -C "$REPO_ROOT" cat-file -e "v1.7^{commit}" 2>/dev/null || skip "kit 1.7 (tag v1.7) not in this clone"
+  k17="$BATS_TEST_TMPDIR/kit17"
+  mkdir -p "$k17"
+  git -C "$REPO_ROOT" archive v1.7 | tar -x -C "$k17"
+  (cd "$k17" && git init -q && git add -A && git commit -qm k17)
+  mk_target
+  "$k17/scripts/install.sh" "$TARGET" >/dev/null
+  (cd "$TARGET" && git add -A && git commit -qm k17 && bash scripts/extras.sh on stop-warning && bash scripts/extras.sh on profiles && git add -A && git commit -qm on) >/dev/null
+  [[ -x "$TARGET/scripts/check-stamp.sh" && -x "$TARGET/scripts/stuck-detect.sh" ]]
+  grep -q 'check-stamp.sh' "$TARGET/.claude/settings.json"
+  before=$(cd "$TARGET" && sha256sum scripts/check-stamp.sh scripts/stuck-detect.sh .claude/settings.json 2>/dev/null || shasum -a 256 scripts/check-stamp.sh scripts/stuck-detect.sh .claude/settings.json)
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  assert_line --regexp '^retired: +scripts/check-stamp\.sh +\(no longer in the kit; not deleted\)$'
+  assert_line --regexp '^retired: +scripts/stuck-detect\.sh +\(no longer in the kit; not deleted\)$'
+  refute_line --regexp '^retired: +\.claude/optional/'
+  [[ "$(grep -c '^retired:' <<<"$output")" == 2 ]]
+  # the Stop hook makes settings.json differ from the kit's copy; the kit's copy did not change, so it stays
+  assert_line --regexp '^tailored \(kit unchanged\): +\.claude/settings\.json '
+  [[ ! -e "$TARGET/.claude/settings.json.kit" ]]
+  after=$(cd "$TARGET" && sha256sum scripts/check-stamp.sh scripts/stuck-detect.sh .claude/settings.json 2>/dev/null || shasum -a 256 scripts/check-stamp.sh scripts/stuck-detect.sh .claude/settings.json)
+  assert_equal "$after" "$before"
+  grep -q 'check-stamp.sh' "$TARGET/.claude/settings.json"
+  # the untailored check.sh is replaced: the stamp lines and the stuck-detect line are gone
+  run grep -c -e check-stamp -e stuck-detect "$TARGET/scripts/check.sh"
+  assert_output 0
+  # the retired entries are out of the manifest, and a second upgrade does not list them again
+  run grep -c -e check-stamp -e stuck-detect "$TARGET/.claude/kit-manifest"
+  assert_output 0
+  run bash "$TARGET/scripts/extras.sh" status
+  assert_success
+  assert_line "profiles: on"
+  rm -f "$TARGET/.claude/kit-upgrade.md"
+  run "$KIT/scripts/install.sh" --upgrade --force "$TARGET"
+  assert_success
+  refute_line --regexp '^retired:'
+}
+
+@test "upgrade: a retired extra file that lives at its active path is listed there, not at .claude/optional/ (the dormant path it does not have)" {
+  installed_target
+  printf '#!/usr/bin/env bash\n' >"$TARGET/scripts/gone.sh"
+  printf '%064d  .claude/optional/gone.sh\n' 0 >>"$TARGET/.claude/kit-manifest"
+  printf '#!/usr/bin/env bash\n' >"$TARGET/.claude/optional/gone-dormant.sh"
+  printf '%064d  .claude/optional/gone-dormant.sh\n' 0 >>"$TARGET/.claude/kit-manifest"
+  printf '%064d  .claude/optional/gone-agent.md\n' 0 >>"$TARGET/.claude/kit-manifest"
+  printf 'x\n' >"$TARGET/.claude/agents/gone-agent.md"
+  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  assert_line --regexp '^retired: +scripts/gone\.sh '
+  assert_line --regexp '^retired: +\.claude/optional/gone-dormant\.sh '
+  assert_line --regexp '^retired: +\.claude/agents/gone-agent\.md '
+  refute_line --regexp '^retired: +\.claude/optional/gone\.sh '
+  # shellcheck disable=SC2016  # the backticks are literal Markdown
+  run grep -F -- '- `scripts/gone.sh`' "$TARGET/.claude/kit-upgrade.md"
+  assert_success
+  [[ -f "$TARGET/scripts/gone.sh" ]]
 }
 
 @test "upgrade: an extra that is on is updated in place, with no .kit when unmodified" {
@@ -310,14 +366,12 @@ metrics: on"
 
 @test "upgrade: an extra the repo switched off stays off" {
   installed_target
-  (cd "$TARGET" && extras_on stop-warning metrics) >/dev/null
-  (cd "$TARGET" && bash scripts/extras.sh off stop-warning && bash scripts/extras.sh off metrics && git add -A && git commit -qm off) >/dev/null
+  (cd "$TARGET" && extras_on verify-review metrics) >/dev/null
+  (cd "$TARGET" && bash scripts/extras.sh off verify-review && bash scripts/extras.sh off metrics && git add -A && git commit -qm off) >/dev/null
   run "$KIT/scripts/install.sh" --upgrade "$TARGET"
   assert_success
-  [[ -f "$TARGET/.claude/optional/check-stamp.sh" && ! -e "$TARGET/scripts/check-stamp.sh" ]]
+  [[ -f "$TARGET/.claude/optional/verify-review.sh" && ! -e "$TARGET/scripts/verify-review.sh" ]]
   [[ -f "$TARGET/.claude/optional/review-stats.sh" && ! -e "$TARGET/scripts/review-stats.sh" ]]
-  run grep -c '"Stop"' "$TARGET/.claude/settings.json"
-  assert_output 0
 }
 
 @test "upgrade: an extra's file the repo deleted is skipped, not re-added off (active or dormant)" {
@@ -365,17 +419,6 @@ metrics: on"
   assert_success
   assert_equal "$(cat "$TARGET/scripts/set-models.sh")" "echo mine"
   [[ -f "$TARGET/.claude/optional/set-models.sh" && ! -e "$TARGET/scripts/set-models.sh.kit" ]]
-}
-
-@test "upgrade: a sync that cannot edit settings.json warns and still exits 0" {
-  installed_target
-  (cd "$TARGET" && extras_on stop-warning) >/dev/null
-  printf 'not json\n' >"$TARGET/.claude/settings.json"
-  git -C "$TARGET" commit -qam broken
-  run "$KIT/scripts/install.sh" --upgrade "$TARGET"
-  assert_success
-  assert_output --partial "warn: scripts/extras.sh sync did not finish"
-  assert_equal "$(cat "$TARGET/.claude/settings.json")" "not json"
 }
 
 @test "kit state: an untracked file in template/ is not installed and the installer warns (R2-60)" {

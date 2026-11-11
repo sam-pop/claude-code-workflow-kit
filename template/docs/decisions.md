@@ -8,7 +8,7 @@ Format: `- YYYY-MM-DD (was Oxx) — the decision, stated so it can be checked ag
 
 - {{YYYY-MM-DD}} — Stack: {{language/framework/runtime}}. Hosting: {{where}}. Database: {{which}}.
 - {{YYYY-MM-DD}} — {{e.g. "All verification goes through `scripts/check.sh`; agents never run raw tool commands."}}
-- {{YYYY-MM-DD}} — Extras on: {{none | codex, profiles, stop-warning, verify-review, metrics}} (scripts/extras.sh). Model profile, when profiles is on: {{lite | standard | max}} (scripts/set-models.sh). Codex, when on: {{High-risk diffs, each release range and the plan text leave for OpenAI; not available on Review-only}}.
+- {{YYYY-MM-DD}} — Extras on: {{none | codex, profiles, verify-review, metrics}} (scripts/extras.sh). Model profile, when profiles is on: {{lite | standard | max}} (scripts/set-models.sh). Codex, when on: {{High-risk diffs, each release range and the plan text leave for OpenAI; not available on Review-only}}.
 
 ## Product
 

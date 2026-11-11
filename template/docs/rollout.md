@@ -43,17 +43,16 @@ The kit's core is the process, the agents, `scripts/check.sh`, the lint hook and
 
 ```bash
 scripts/extras.sh status        # one line per extra, then a warn: line for anything half-enabled
-scripts/extras.sh on <name>     # move the files active and add the extra's hook, if it has one
+scripts/extras.sh on <name>     # move the extra's file to its active path
 scripts/extras.sh off <name>
 ```
 
-Switching moves files and changes only the kit's own hook entry in `.claude/settings.json` (the rest is kept, re-written with 2-space indentation). Record the choice in `docs/decisions.md`. `scripts/install.sh --upgrade` keeps each extra as the repo had it, and `check.sh doctor` shows the `status` warnings. Start with none for the first two weeks and add one when you can say what it should fix.
+Every extra is exactly one file; switching moves it and edits nothing else. Record the choice in `docs/decisions.md`. `scripts/install.sh --upgrade` keeps each extra as the repo had it, and `check.sh doctor` shows the `status` warnings. Start with none for the first two weeks and add one when you can say what it should fix. Two extras were retired in 1.8, the stop-warning hook and the repeated-failure counter: a repo that had them keeps their files, `extras.sh` no longer lists them, and `scripts/extras.sh on stop-warning` says so.
 
 | Extra | Adds | Cost or egress |
 |---|---|---|
 | `codex` | A Codex second opinion on the plan, on High-risk diffs and before a release | Sends the plan text or the diff (with 20 lines of context) to OpenAI |
-| `profiles` | Model and effort per agent (`set-models.sh`), risk-scaled review effort, the writer ladder, the repeated-failure counter | Model spend follows the profile; `max` bills Fable credits |
-| `stop-warning` | A `Stop` hook that names files changed since `check.sh all` last passed | A short git scan each turn |
+| `profiles` | Model and effort per agent (`set-models.sh`), risk-scaled review effort, the writer ladder | Model spend follows the profile; `max` bills Fable credits |
 | `verify-review` | A `### Verification` block on each saved review | None |
 | `metrics` | Review-log counts in `check.sh doctor` | None |
 
@@ -89,7 +88,7 @@ Switching moves files and changes only the kit's own hook entry in `.claude/sett
 
 ### profiles
 
-`scripts/extras.sh on profiles` installs `scripts/set-models.sh` and the repeated-failure counter. Tiers decide which agents run; profiles decide which models and efforts they run on. Pick a profile by what your plan and budget cover and switch with `scripts/set-models.sh <lite|standard|max>`, unless `docs/decisions.md` records tailored seats (an agent whose model or effort you set by hand): then edit those files yourself. The script refuses to overwrite a seat that is none of the profiles' values for its role (exit 1, nothing changed) and says which; `--force` overrides. Record the choice in `docs/decisions.md`.
+`scripts/extras.sh on profiles` installs `scripts/set-models.sh`. Tiers decide which agents run; profiles decide which models and efforts they run on. Pick a profile by what your plan and budget cover and switch with `scripts/set-models.sh <lite|standard|max>`, unless `docs/decisions.md` records tailored seats (an agent whose model or effort you set by hand): then edit those files yourself. The script refuses to overwrite a seat that is none of the profiles' values for its role (exit 1, nothing changed) and says which; `--force` overrides. Record the choice in `docs/decisions.md`.
 
 | Profile | planner | writer | reviewer | security-auditor | For |
 |---|---|---|---|---|---|
@@ -113,7 +112,7 @@ A Fable reviewer stays at `high` on High risk because Fable lost only about 1.8 
 
 **Writer ladder.** Rung 1 is the writer as defined. Escalate on any of:
 
-- `scripts/check.sh` printing `same failure N times: …` in the pasted output, or the same check still failing after the writer's own fixes;
+- the same check failing 3 times with the same error, or still failing after the writer's own fixes;
 - the reviewer's re-run disagreeing with the writer's report;
 - a blocking finding surviving one repair pass at the same rung;
 - a `## STUCK:` report from the writer;
@@ -127,14 +126,6 @@ NOT CONFIGURED checks and Warnings never trigger escalation. Each rung is a fres
 | max | opus/medium | opus/high | opus/xhigh | stop |
 
 Stop means the briefs go to the planner and the owner is told. Name the rung and the trigger in each writer and reviewer prompt; the reviewer records them in its `### Run` line. Never pass Agent `model`: an escalated writer must not land on the reviewer's model. The measured gain came from re-running failures at higher effort; switching models mid-ladder was never measured (the research report above).
-
-### stop-warning
-
-`scripts/extras.sh on stop-warning` adds a `Stop` hook that runs `scripts/check-stamp.sh hook` when Claude finishes a turn. `scripts/check.sh all` records the files it passed on (paths and blob ids under `.git/kit`, never committed). When files differ from that run, committed or not, the session shows how many and up to three names. It is a reminder, not a block. It stays silent when nothing changed and until `check.sh` is configured.
-
-- Limits: committing unchecked changes still warns, and if `check.sh all` cannot pass on your machine (a missing tool) the warning appears on every turn with changes: install the tool or make that check `skip` with a reason.
-- On very large trees (about 200k files) the hook can reach its 30 s timeout. It never blocks; switch the extra off there.
-- A tailored `scripts/check.sh` needs the two stamp lines (`scripts/check-stamp.sh tree` before lint, `record` after doctor); `extras.sh status` warns when they are missing.
 
 ### verify-review
 

@@ -13,7 +13,7 @@ Status: ADOPTED. This is the one file the planner, writer and reviewer cite. Eve
 
 ## Configuration
 
-- Scripts read environment variables only where their header documents them (`BASE_BRANCH`, `DOCTOR_SKIP_PATHS`, `KIT_EXTRAS_REPO`, `KIT_STUCK_INNER`, `CLAUDE_PROJECT_DIR` for hooks). No secrets anywhere in the kit.
+- Scripts read environment variables only where their header documents them (`BASE_BRANCH`, `DOCTOR_SKIP_PATHS`, `KIT_EXTRAS_REPO`, `CLAUDE_PROJECT_DIR` for hooks). No secrets anywhere in the kit.
 
 ## Errors
 
@@ -78,7 +78,7 @@ Each row is a hard rule. **Mechanical** rows name the check in `scripts/check.sh
 | bash-4 syntax (`mapfile`, `declare -A`, `local -n`, `${x,,}`, `[[ -v`, `\|&`, `coproc`) | mechanical: `test` (`tests/consistency.bats`) |
 | Root copy drifting from `template/` | mechanical: `test` (`tests/consistency.bats`) |
 | Maintainer content inside `template/` | mechanical: `test` (`tests/consistency.bats`) |
-| Core keeping state with every extra off | mechanical: `test` (`tests/stuck-detect.bats`) |
+| Core keeping state with every extra off | mechanical: `test` (`tests/check.bats`) |
 | Bug fix without a regression test | judgment |
 | A hook that can block or print noise on its own failure | judgment |
 | A new runtime dependency in `template/` (anything beyond bash, git, python3 stdlib) | judgment |
