@@ -313,6 +313,7 @@ metrics: on"
   assert_line "profiles: on"
   rm -f "$TARGET/.claude/kit-upgrade.md"
   run "$KIT/scripts/install.sh" --upgrade --force "$TARGET"
+  assert_success
   refute_line --regexp '^retired:'
 }
 
