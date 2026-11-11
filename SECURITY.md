@@ -2,7 +2,7 @@
 
 ## What the kit guards
 
-Claude Kit guards against **agent accidents**: a command that should not have run, a check reported as passed that never ran, a secret sent where it should not go. It does not guard against a hostile committer or a malicious dependency. Be clear about what this does and does not protect against.
+Claude Kit guards against **agent accidents**: a command that should not have run, a check reported as passed that never ran, a secret sent where it should not go. It does not guard against a hostile committer or a malicious dependency.
 
 - **Deny rules prevent accidents, not attacks.** They match command prefixes; a reworded command such as `git -C . push` can slip past them. They are not a sandbox.
 - **Hooks execute repository code.** Anything in `.claude/settings.json` or `scripts/` runs on your machine. The lint hook runs your linters after every edit, so a linter config that is code runs too. Only install the kit in repos whose committers you trust, use the Review-only tier otherwise, and review changes to those paths, and to every file your hooks, linters, formatters, tests or build execute (for example `eslint.config.js`, `.markdownlint-cli2.cjs`, `conftest.py`, `package.json` scripts, a `Makefile`), before opening Claude Code on a branch.

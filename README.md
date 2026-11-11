@@ -335,7 +335,7 @@ It also sets **kill criteria**. If cost per change is above baseline after 60 da
 
 ## Model profiles and cost (vendor measurements)
 
-The `profiles` extra (`scripts/extras.sh on profiles`) sets the model and effort of each agent. Tiers decide which agents run; profiles decide what they run on. The figures on this page come from the model vendors' own published measurements, not from measuring this kit: Anthropic's are internal, directional, on a SWE-bench Pro subset, at API list prices (†); OpenAI's are API list prices, uncached (‡). Subscription accounting is unpublished. Sources and caveats: [the research report](docs/research/coding-agent-model-effort-combos.md).
+The `profiles` extra (`scripts/extras.sh on profiles`) sets the model and effort of each agent. Tiers decide which agents run; profiles decide what they run on. The figures on this page come from the model vendors' own published measurements, not from measuring this kit: Anthropic's are internal, directional, on a SWE-bench Pro subset, at API list prices; OpenAI's are API list prices, uncached. Subscription accounting is unpublished. Sources and caveats: [the research report](docs/research/coding-agent-model-effort-combos.md).
 
 ```bash
 scripts/set-models.sh standard   # or: lite | max
