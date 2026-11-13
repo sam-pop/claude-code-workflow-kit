@@ -84,6 +84,27 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   assert_equal "$(target_files)" "README.md"
 }
 
+@test "upgrade: kit-upgrade.md lists each agent's seat from before the upgrade, so a merge that moves one can be undone" {
+  installed_target
+  sed -i.bak 's/^model: sonnet$/model: opus/; s/^effort: high$/effort: medium/' "$TARGET/.claude/agents/writer.md"
+  rm -f "$TARGET/.claude/agents/writer.md.bak"
+  # shellcheck disable=SC2016  # a literal $(...) in the file is the point
+  printf -- '---\nname: odd\nmodel: $(rm -rf ~)\neffort: high\n---\n' >"$TARGET/.claude/agents/odd.md"
+  printf -- '---\nname: quoted\nmodel: "opus"  # tailored\neffort: medium\n---\n' >"$TARGET/.claude/agents/quoted.md"
+  mk_kit2
+  echo "# newer" >>"$KIT2/template/scripts/doctor.sh"
+  commit_kit2
+  run "$KIT2/scripts/install.sh" --upgrade "$TARGET"
+  assert_success
+  run cat "$TARGET/.claude/kit-upgrade.md"
+  assert_line "## Agent seats before this upgrade"
+  assert_line -- "- \`writer\`: opus/medium"
+  assert_line -- "- \`reviewer\`: opus/high"
+  assert_line -- "- \`quoted\`: opus/medium"
+  assert_line -- "- \`odd\`: (unreadable)"
+  refute_output --partial 'rm -rf'
+}
+
 @test "upgrade: an unmodified file the kit changed is replaced in place and keeps its mode" {
   installed_target
   chmod 700 "$TARGET/scripts/doctor.sh"

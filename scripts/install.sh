@@ -191,6 +191,35 @@ def clean_version(v):
     """A version read from the target is untrusted: digits and dots only, else unknown."""
     return v if re.fullmatch(r"\d+(\.\d+)*", v) else "unknown"
 
+def agent_seats():
+    """Each agent's model/effort before the upgrade. A clean merge can move a seat silently: a seat
+    equal to the old kit default takes the new default. Read from the target, so values are untrusted:
+    names and values that are not plain words are left out."""
+    seats, d = [], os.path.join(target, ".claude", "agents")
+    if not os.path.isdir(d):
+        return seats
+    for f in sorted(os.listdir(d)):
+        p = os.path.join(d, f)
+        if not f.endswith(".md") or os.path.islink(p) or not os.path.isfile(p):
+            continue
+        name, word = f[:-3], re.compile(r"[A-Za-z0-9._-]{1,40}")
+        if not word.fullmatch(name):
+            continue
+        try:
+            head = open(p, encoding="utf-8", errors="replace").read().split("\n---", 1)[0]
+        except OSError:
+            seats.append(f"- `{name}`: (unreadable)")
+            continue
+        kv = {m.group(1): m.group(2).strip("\"'")
+              for m in re.finditer(r"(?m)^(model|effort):[ \t]*([^#\s]+)[ \t]*(?:#.*)?$", head)}
+        if kv.get("model") and all(word.fullmatch(v) for v in kv.values()):
+            seats.append(f"- `{name}`: {kv['model']}/{kv.get('effort', 'default')}")
+        elif kv:
+            seats.append(f"- `{name}`: (unreadable)")
+    return seats
+
+seats_before = agent_seats() if upgrade else []
+
 from_version = clean_version(old_info.get("version", "unknown"))
 
 files = kit_files()
@@ -431,6 +460,7 @@ if upgrade:
         else:
             lines += [f"- `{p}`" for p in groups[c]] or ["(none)"]
         lines.append("")
+    lines += ["## Agent seats before this upgrade", ""] + (seats_before or ["(none)"]) + [""]
     lines += [f"## Changes since {from_version}" if from_version != "unknown"
               else "## Changes (previous version unknown, all shown)", ""]
     if keep:

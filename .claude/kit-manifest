@@ -4,7 +4,7 @@
 87c733ffb2cc8ac61cea3149e830a86ab7c47b59c0a3696124987c65b0993a62  .claude/agents/writer.md
 e3feae5cbb2ae098a8f616cfd9ac749c0a5efc4af6bd5de10fcea5594896d3b8  .claude/optional/codex-reviewer.md
 cc93e0ff7a56796e6f80c0f940f9671f57a6eada6c1016792ea6737cc4806b1b  .claude/optional/review-stats.sh
-015d838df2cc2c673c2b56389787e0e2b293a602e69d2709e781b93f50e918bc  .claude/optional/set-models.sh
+ea68b9371f354f5e8e7af70cf4e6707c65f50a87b847cec7c36eea146b89bc9f  .claude/optional/set-models.sh
 26f172c67a966a1a0184e2f7c3592636da1d64765fc814ccd2f01bc9cba36563  .claude/optional/verify-review.sh
 4f31447ce128ddd11bdb966007236ad0dc92d7fe8b6e89c5af8c1c0a3a3272e0  .claude/settings.json
 20125907ea7b54a0f0cb1699c2477e945629b2b2b77e0abcb97b3938bf24ebab  .github/dependabot.yml
