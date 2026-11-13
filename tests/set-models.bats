@@ -66,6 +66,24 @@ field() { awk -v k="$2:" 'NR>1 && /^---/ {exit} $1==k {print $2}' ".claude/agent
   assert_output --partial "warn: effortLevel in ~/.claude/settings.json is ignored"
 }
 
+@test "effortLevel only inside modelSettings is not a warning; a top-level one is, unless modelSettings sets Opus effort" {
+  mkdir -p "$HOME/.claude"
+  echo '{"modelSettings": {"claude-opus-5-5": {"effortLevel": "medium"}}}' >"$HOME/.claude/settings.json"
+  run scripts/set-models.sh standard
+  assert_success
+  refute_output --partial "warn: effortLevel"
+  echo '{"effortLevel": "high", "modelSettings": {"claude-opus-5-5": {"effortLevel": "medium"}}}' >"$HOME/.claude/settings.json"
+  run scripts/set-models.sh standard
+  refute_output --partial "warn: effortLevel"
+  echo '{"effortLevel": "high", "modelSettings": {"claude-sonnet-5-5": {"effortLevel": "low"}}}' >"$HOME/.claude/settings.json"
+  run scripts/set-models.sh standard
+  assert_output --partial "warn: effortLevel in ~/.claude/settings.json is ignored"
+  echo 'not json "effortLevel"' >"$HOME/.claude/settings.json"
+  run scripts/set-models.sh standard
+  assert_success
+  refute_output --partial "warn: effortLevel"
+}
+
 @test "usage errors exit 2: no args, --cross alone, unknown profile, two profiles" {
   for args in "" "--cross" "foo" "lite max"; do
     # shellcheck disable=SC2086  # split the argument list on purpose

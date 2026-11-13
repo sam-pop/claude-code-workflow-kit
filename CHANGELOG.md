@@ -23,6 +23,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 
 - `scripts/install.sh --upgrade` listed a retired extra file at its dormant path (`.claude/optional/<file>`) even when the repo had it on, at `scripts/<file>` or `.claude/agents/<file>`; it now lists the path where the file is.
 - A base `.gitleaks.toml` that path-allowlists `.*\.md$` exempted the prompt, which was scanned as `prompt.md`: in high mode the removed lines of the diff, and in plan mode the whole plan, went unscanned. The prompt is now scanned under a neutral name.
+- `scripts/set-models.sh` (profiles extra) warned about `effortLevel` in `~/.claude/settings.json` whenever the key appeared anywhere, including per-model `modelSettings` entries. It now warns only on a top-level `effortLevel` when no `modelSettings` entry sets an Opus model's effort.
 
 ### Upgrade notes
 

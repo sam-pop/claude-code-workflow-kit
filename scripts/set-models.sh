@@ -149,7 +149,15 @@ if command -v claude >/dev/null; then
     echo "warn: Claude Code $cv is older than 2.1.292: Agent tool per-call effort unavailable; ladder and risk tiers won't apply"
   fi
 fi
-if [[ -f "$HOME/.claude/settings.json" ]] && grep -q '"effortLevel"' "$HOME/.claude/settings.json"; then
+# Only a top-level effortLevel matters, and only when no modelSettings entry sets an Opus model's
+# effort: per-model entries use the same key. Unreadable JSON gives no warning.
+if [[ -f "$HOME/.claude/settings.json" ]] && python3 -I -c '
+import json, sys
+s = json.load(open(sys.argv[1]))
+ms = s.get("modelSettings") if isinstance(s.get("modelSettings"), dict) else {}
+opus = any("opus" in k.lower() and isinstance(v, dict) and "effortLevel" in v for k, v in ms.items())
+sys.exit(0 if isinstance(s, dict) and "effortLevel" in s and not opus else 1)
+' "$HOME/.claude/settings.json" 2>/dev/null; then
   echo "warn: effortLevel in ~/.claude/settings.json is ignored for Opus 5.5; use modelSettings or /effort"
 fi
 if [[ "$profile" == max ]]; then
