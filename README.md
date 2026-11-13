@@ -61,7 +61,7 @@ Details for each step: [Quick start](#quick-start), [Daily use](#daily-use), [Up
 - [Why this exists](#why-this-exists)
 - [Principles](#principles)
 - [How it works](#how-it-works)
-- [Tell your agent](#tell-your-agent)
+- [Tell Claude Code](#tell-claude-code)
 - [Quick start](#quick-start)
 - [Choosing a tier](#choosing-a-tier)
 - [Cross-model review (Codex)](#cross-model-review-codex)
@@ -160,9 +160,9 @@ flowchart LR
 - **Larger changes** start with a planner that commits to one approach, names the alternative it rejected, and returns questions with recommended answers for you to confirm in a single reply.
 - **Every review** is saved automatically. Once a month, recurring findings become lint rules and recurring false alarms become reviewer exceptions.
 
-## Tell your agent
+## Tell Claude Code
 
-Copy one of these into Claude Code in your repository (the upgrade one also works in Codex). Each one says what to run and what to show you; for everyday work, see [Daily use](#daily-use).
+Copy one of these into Claude Code in your repository; the upgrade one also works in Codex. Each one says what to run and what to show you; for everyday work, see [Daily use](#daily-use).
 
 **Install and tailor** (Claude Code):
 
