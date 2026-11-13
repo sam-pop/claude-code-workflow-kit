@@ -61,6 +61,7 @@ Details for each step: [Quick start](#quick-start), [Daily use](#daily-use), [Up
 - [Why this exists](#why-this-exists)
 - [Principles](#principles)
 - [How it works](#how-it-works)
+- [Tell Claude Code](#tell-claude-code)
 - [Quick start](#quick-start)
 - [Choosing a tier](#choosing-a-tier)
 - [Cross-model review (Codex)](#cross-model-review-codex)
@@ -158,6 +159,44 @@ flowchart LR
 - **Small changes** skip the planner and writer: the main session edits, runs the checks, and the reviewer looks at the diff. Two contexts instead of four.
 - **Larger changes** start with a planner that commits to one approach, names the alternative it rejected, and returns questions with recommended answers for you to confirm in a single reply.
 - **Every review** is saved automatically. Once a month, recurring findings become lint rules and recurring false alarms become reviewer exceptions.
+
+## Tell Claude Code
+
+Copy one of these into Claude Code in your repository; the upgrade one also works in Codex. Each one says what to run and what to show you; for everyday work, see [Daily use](#daily-use).
+
+**Install and tailor** (Claude Code):
+
+```text
+Install Claude Kit into this repo: clone https://github.com/sam-pop/claude-code-workflow-kit into a temporary folder outside this repo, run its scripts/install.sh with this repo's path, and show me the output. Then read TAILOR.md and tailor the kit to this repo.
+```
+
+**Upgrade** (Claude Code or Codex):
+
+```text
+Upgrade Claude Kit in this repo: pull the latest kit into my clone at <path> (or clone it into a temporary folder), run its scripts/install.sh --upgrade --dry-run on this repo (add --base <kit commit I installed from> if this repo predates kit 1.4) and show me the classification. When I say go, run it without --dry-run, then read .claude/kit-upgrade.md and follow it. Do not commit.
+```
+
+**Turn on an extra** (Claude Code):
+
+```text
+Turn on the profiles extra with the standard profile: run scripts/extras.sh on profiles, then scripts/set-models.sh standard, and record it in docs/decisions.md.
+```
+
+```text
+Turn on the codex extra: run scripts/extras.sh on codex and check that the codex CLI and gitleaks are installed. Remind me that it sends diffs to OpenAI. Record it in docs/decisions.md.
+```
+
+**Monthly check** (Claude Code):
+
+```text
+Run scripts/check.sh doctor and tell me what to fix, most important first.
+```
+
+**Before a release** (Claude Code; Shared and Review-only tiers):
+
+```text
+Run the security-auditor agent on this repo and write its report to docs/security.md. List any Critical or High finding first; those block the release.
+```
 
 ## Quick start
 
