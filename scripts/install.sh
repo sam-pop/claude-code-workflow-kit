@@ -202,11 +202,20 @@ def agent_seats():
         p = os.path.join(d, f)
         if not f.endswith(".md") or os.path.islink(p) or not os.path.isfile(p):
             continue
-        head = open(p, encoding="utf-8", errors="replace").read().split("\n---", 1)[0]
-        kv = dict(m.groups() for m in re.finditer(r"(?m)^(model|effort):[ \t]*(\S+)[ \t]*$", head))
         name, word = f[:-3], re.compile(r"[A-Za-z0-9._-]{1,40}")
-        if word.fullmatch(name) and kv.get("model") and all(word.fullmatch(v) for v in kv.values()):
+        if not word.fullmatch(name):
+            continue
+        try:
+            head = open(p, encoding="utf-8", errors="replace").read().split("\n---", 1)[0]
+        except OSError:
+            seats.append(f"- `{name}`: (unreadable)")
+            continue
+        kv = {m.group(1): m.group(2).strip("\"'")
+              for m in re.finditer(r"(?m)^(model|effort):[ \t]*([^#\s]+)[ \t]*(?:#.*)?$", head)}
+        if kv.get("model") and all(word.fullmatch(v) for v in kv.values()):
             seats.append(f"- `{name}`: {kv['model']}/{kv.get('effort', 'default')}")
+        elif kv:
+            seats.append(f"- `{name}`: (unreadable)")
     return seats
 
 seats_before = agent_seats() if upgrade else []

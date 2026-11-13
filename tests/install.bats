@@ -90,6 +90,7 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   rm -f "$TARGET/.claude/agents/writer.md.bak"
   # shellcheck disable=SC2016  # a literal $(...) in the file is the point
   printf -- '---\nname: odd\nmodel: $(rm -rf ~)\neffort: high\n---\n' >"$TARGET/.claude/agents/odd.md"
+  printf -- '---\nname: quoted\nmodel: "opus"  # tailored\neffort: medium\n---\n' >"$TARGET/.claude/agents/quoted.md"
   mk_kit2
   echo "# newer" >>"$KIT2/template/scripts/doctor.sh"
   commit_kit2
@@ -99,6 +100,8 @@ kit_version() { sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' "$KIT/CHANGELOG.md" | head
   assert_line "## Agent seats before this upgrade"
   assert_line -- "- \`writer\`: opus/medium"
   assert_line -- "- \`reviewer\`: opus/high"
+  assert_line -- "- \`quoted\`: opus/medium"
+  assert_line -- "- \`odd\`: (unreadable)"
   refute_output --partial 'rm -rf'
 }
 
