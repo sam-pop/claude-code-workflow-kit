@@ -149,7 +149,12 @@ if command -v claude >/dev/null; then
     echo "warn: Claude Code $cv is older than 2.1.292: Agent tool per-call effort unavailable; ladder and risk tiers won't apply"
   fi
 fi
-if [[ -f "$HOME/.claude/settings.json" ]] && grep -q '"effortLevel"' "$HOME/.claude/settings.json"; then
+# Warn only when a top-level effortLevel is set and modelSettings gives Opus 5.5 none of its own.
+if [[ -f "$HOME/.claude/settings.json" ]] && python3 -I -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+opus = ((d.get("modelSettings") or {}).get("claude-opus-5-5") or {}).get("effortLevel")
+sys.exit(0 if d.get("effortLevel") and not opus else 1)' "$HOME/.claude/settings.json" 2>/dev/null; then
   echo "warn: effortLevel in ~/.claude/settings.json is ignored for Opus 5.5; use modelSettings or /effort"
 fi
 if [[ "$profile" == max ]]; then

@@ -21,6 +21,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `scripts/insta
 
 ### Fixed
 
+- `scripts/set-models.sh` warned about `effortLevel` whenever the string appeared anywhere in `~/.claude/settings.json`, including inside `modelSettings`, where it is the right setting. It now warns only when a top-level `effortLevel` is set and `modelSettings` has no `claude-opus-5-5` effort; unreadable JSON prints nothing.
 - `scripts/install.sh --upgrade` listed a retired extra file at its dormant path (`.claude/optional/<file>`) even when the repo had it on, at `scripts/<file>` or `.claude/agents/<file>`; it now lists the path where the file is.
 - A base `.gitleaks.toml` that path-allowlists `.*\.md$` exempted the prompt, which was scanned as `prompt.md`: in high mode the removed lines of the diff, and in plan mode the whole plan, went unscanned. The prompt is now scanned under a neutral name.
 
