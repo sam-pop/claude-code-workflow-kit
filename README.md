@@ -421,12 +421,12 @@ The installer records the version and each file's hash in `.claude/kit-version` 
 | **tailored (kit unchanged)** | You changed it, the kit did not: kept as is, no `.kit` |
 | **new** | Added by this version: installed |
 | **skipped** | You deleted it earlier: not re-added |
-| **retired** | No longer in the kit: listed, never deleted (1.6 retires `handoff.md` and `docs/glossary.md`; yours stay as your own files) |
+| **retired** | No longer in the kit: listed, never deleted (1.6 retired `handoff.md` and `docs/glossary.md`, 1.8 retired `scripts/check-stamp.sh` and `scripts/stuck-detect.sh`; yours stay as your own files) |
 | **never re-added** | `TAILOR.md`, `HOW-TO-USE.md` and `README.md` (the README is never installed) |
 
 Extras follow the repo: a file of an extra that is on is updated in place and one you switched off stays off. A file the kit no longer ships (the 1.8 retirement of `scripts/check-stamp.sh` and `scripts/stuck-detect.sh`) is listed as retired at the path where your repo has it and is never deleted; the Upgrade notes in the CHANGELOG say whether to keep it. A pre-1.4 repo has no manifest, so every existing file that differs from the kit becomes `.kit` once.
 
-The merge is three-way: for each tailored file the installer saves the kit's copy from the commit you installed from as `<name>.kit-base` (when it can read that commit and its hash matches the manifest), and the merge session runs `git merge-file`, so only the lines both you and the kit changed are conflicts. Without a usable base it merges two-way and `.claude/kit-upgrade.md` says why. `--upgrade` refuses to run over an unfinished merge unless you pass `--force`; a pre-1.4 repo can pass `--base <kit commit you installed from>`. These details, and what the merge session does, are in [`template/HOW-TO-USE.md`](template/HOW-TO-USE.md#upgrading-the-kit). What changed per version: [CHANGELOG.md](CHANGELOG.md).
+The merge is three-way: for each tailored file the installer saves the kit's copy from the commit you installed from as `<name>.kit-base` (when it can read that commit and its hash matches the manifest), and the merge session runs `git merge-file`, so only the lines both you and the kit changed are conflicts. Without a usable base it merges two-way and `.claude/kit-upgrade.md` says why. Each agent's model and effort are recorded before the merge, and the merge session puts back any seat a clean merge moved, so a model you chose is never swapped for the kit's new default without you seeing it. `--upgrade` refuses to run over an unfinished merge unless you pass `--force`; a pre-1.4 repo can pass `--base <kit commit you installed from>`. These details, and what the merge session does, are in [`template/HOW-TO-USE.md`](template/HOW-TO-USE.md#upgrading-the-kit). What changed per version: [CHANGELOG.md](CHANGELOG.md).
 
 ## Security model and limitations
 
