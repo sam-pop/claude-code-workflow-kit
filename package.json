@@ -9,6 +9,6 @@
     "bats": "1.13.0",
     "bats-assert": "2.2.4",
     "bats-support": "0.3.0",
-    "markdownlint-cli2": "0.24.0"
+    "markdownlint-cli2": "0.24.1"
   }
 }
